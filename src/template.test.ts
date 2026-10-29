@@ -66,7 +66,8 @@ describe('the three slides', () => {
     expect(named(cover!, 'abertura-1')).toBe('CONCURSOS');
     expect(named(cover!, 'abertura-2')).toBe('ABERTOS');
     expect(named(cover!, 'chamada')).toBe(DEFAULT_CALL);
-    expect(named(exam!, 'titulo')).toBe('PREFEITURA DE VALE ALTO\nPROFESSOR');
+    expect(named(exam!, 'titulo')).toBe('PREFEITURA DE VALE ALTO');
+    expect(named(exam!, 'subtitulo')).toBe('PROFESSOR');
     expect(named(exam!, 'fatos')).toBe('Banca: Quintex\nVagas: 1.200');
     expect(named(back!, 'fechamento')).toBe(DEFAULT_CLOSING);
   });
@@ -75,6 +76,7 @@ describe('the three slides', () => {
     const [exam] = await slides('::lamina\n  SEDUC QX\n  Banca: Ômegas\n  Vagas: 3.000');
 
     expect(named(exam!, 'titulo')).toBe('SEDUC QX');
+    expect(named(exam!, 'subtitulo')).toBeUndefined();
     expect(named(exam!, 'fatos')).toBe('Banca: Ômegas\nVagas: 3.000');
   });
 

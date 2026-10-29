@@ -21738,8 +21738,8 @@ var REGULAR = 400;
 var MEDIUM = 500;
 var BOLD2 = 700;
 var BLACK = 900;
-var ASCENT = 0.953;
-var DESCENT = 0.277;
+var ASCENT = 0.75;
+var DESCENT = 0.25;
 var CAP_HEIGHT = 0.709;
 function capOffset(size, lineHeight) {
   return size * ((lineHeight - (ASCENT + DESCENT)) / 2 + (ASCENT - CAP_HEIGHT));
@@ -21784,41 +21784,48 @@ function cover(context, ink) {
       fill: solid(ink("accent")),
       transform: { x: MARGIN, y: 438 }
     }),
+    // The two title lines sit 3 px and the call 5 px under their layers' bounds: measured
+    // against the reference art, at these sizes the face's capitals render that much higher.
     textAt("abertura-1", first, {
       x: 84,
-      capTop: 505,
+      capTop: 508,
       size: 140.9,
       weight: BOLD2,
       color: ink("accent")
     }),
     textAt("abertura-2", second, {
       x: 79,
-      capTop: 692,
+      capTop: 695,
       size: 137.2,
       weight: BOLD2,
       color: ink("accent")
     }),
     textAt("chamada", slotText(context, "chamada", DEFAULT_CALL), {
       x: 729,
-      capTop: 681,
+      capTop: 686,
       size: 33.1,
       weight: BOLD2,
       color: ink("accent"),
-      lineHeight: 1.12
-    })
+      lineHeight: 1.24
+    }),
+    ...linkMark(971, 687, 1, ink("accent")),
+    arrow("seta", { x: 729, y: 846, w: 270, h: 34, shaft: 10 }, ink("accent")),
+    ...corners(ink("accent"))
   ];
 }
 function backCover(context, ink) {
   return [
     kicker(context, ink),
     textAt("fechamento", slotText(context, "fechamento", DEFAULT_CLOSING), {
-      x: 198,
+      // The reference's lines are 685 px at the widest, centred on the slide; 700 leaves the
+      // same breaks room under a face a few pixels wider.
+      x: 190,
       capTop: 395,
       size: 43.6,
       weight: BOLD2,
       color: ink("accent"),
       lineHeight: 1.19,
-      width: 685,
+      width: 700,
       align: "center"
     }),
     textAt("contatos", slotText(context, "contatos", DEFAULT_CONTACTS), {
@@ -21828,7 +21835,9 @@ function backCover(context, ink) {
       weight: REGULAR,
       color: ink("accent"),
       lineHeight: 2
-    })
+    }),
+    ...linkMark(906, 617, 0.87, ink("accent")),
+    ...corners(ink("accent"))
   ];
 }
 function exam(context, ink) {
@@ -21837,29 +21846,24 @@ function exam(context, ink) {
   const written = all.filter((line) => line !== "");
   const [title = "", ...rest] = written;
   const subtitle = rest[0] !== void 0 && !rest[0].includes(":") ? rest.shift() : void 0;
-  const titleRuns = [
-    run(title.toUpperCase(), { font: FACE2, size: 72, weight: BLACK, color: ink("title-ink") })
-  ];
+  const centred = { x: 0, width: SLIDE_WIDTH, align: "center" };
   const nodes = [
-    text({
-      name: "titulo",
-      runs: [
-        titleRuns[0],
-        ...subtitle === void 0 ? [] : [
-          lineBreak(),
-          run(subtitle.toUpperCase(), {
-            font: FACE2,
-            size: 40,
-            weight: BLACK,
-            color: ink("subtitle-ink")
-          })
-        ]
-      ],
-      box: { w: SLIDE_WIDTH },
-      align: "center",
-      lineHeight: 1,
-      transform: { x: 0, y: 368 - capOffset(72, 1) }
+    textAt("titulo", title.toUpperCase(), {
+      ...centred,
+      capTop: 368,
+      size: 72,
+      weight: BLACK,
+      color: ink("title-ink")
     }),
+    ...subtitle === void 0 ? [] : [
+      textAt("subtitulo", subtitle.toUpperCase(), {
+        ...centred,
+        capTop: 440,
+        size: 40,
+        weight: BLACK,
+        color: ink("subtitle-ink")
+      })
+    ],
     rect({
       name: "card",
       size: { w: 576, h: 448 },
@@ -21869,7 +21873,8 @@ function exam(context, ink) {
         { kind: "shadow", x: 0, y: 8, blur: 24, spread: 0, color: { r: 0, g: 0, b: 0, a: 0.16 } }
       ],
       transform: { x: 248, y: 534 }
-    })
+    }),
+    arrow("seta", { x: 848, y: 1217, w: 151, h: 25, shaft: 7 }, ink("title-ink"))
   ];
   const facts = rest.flatMap((line, index) => {
     const split = line.indexOf(":");
@@ -21887,13 +21892,61 @@ function exam(context, ink) {
       text({
         name: "fatos",
         runs: [firstFact, ...otherFacts],
-        box: { w: 446 },
+        // To the card's inner edge, so the reference's widest line (`Remuneração: R$ 7.181,41`,
+        // 446 px there) does not wrap under a face a few pixels wider.
+        box: { w: 500 },
         lineHeight: 1.2,
         transform: { x: 313, y: 599 - capOffset(40, 1.2) }
       })
     );
   }
   return nodes;
+}
+function arrow(name, box, color2) {
+  const head = Math.round(box.h * 0.62);
+  const top = (box.h - box.shaft) / 2;
+  const neck = box.w - head;
+  const d = `M0 ${top}H${neck}V0L${box.w} ${box.h / 2}L${neck} ${box.h}V${top + box.shaft}H0Z`;
+  return vector({
+    name,
+    geometry: { kind: "path", d, fillRule: "nonzero" },
+    size: { w: box.w, h: box.h },
+    fill: solid(color2),
+    transform: { x: box.x, y: box.y }
+  });
+}
+function corners(color2) {
+  const bars = [
+    { x: 78, y: 238, w: 5, h: 16 },
+    { x: 78, y: 238, w: 16, h: 5 },
+    { x: 996, y: 1118, w: 5, h: 16 },
+    { x: 985, y: 1129, w: 16, h: 5 }
+  ];
+  return bars.map(
+    (bar, index) => rect({
+      name: `canto-${index + 1}`,
+      size: { w: bar.w, h: bar.h },
+      fill: solid(color2),
+      transform: { x: bar.x, y: bar.y }
+    })
+  );
+}
+function linkMark(x, y, scale, color2) {
+  const s = (value) => Math.round(value * scale * 10) / 10;
+  return [
+    rect({
+      name: "marca-cheia",
+      size: { w: s(11), h: s(11) },
+      fill: solid(color2),
+      transform: { x: x + s(12), y }
+    }),
+    rect({
+      name: "marca-vazada",
+      size: { w: s(12), h: s(13) },
+      stroke: { paint: solid(color2), width: 1, align: "inside" },
+      transform: { x, y: y + s(11) }
+    })
+  ];
 }
 function kicker(context, ink) {
   const words = slotText(context, "abertura", DEFAULT_OPENING).replace(/\s+/g, " ").trim();
