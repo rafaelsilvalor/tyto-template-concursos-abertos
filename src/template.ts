@@ -114,6 +114,9 @@ const MARGIN = 80;
 export const build: TemplateBuild = (context: TemplateContext) => {
   const ink = (name: ColorName) => colorValue(context, name, COLOR_DEFAULTS[name]);
   const page = sealed(context.size, sealOf(context));
+  // The seal's band, glued to the last slide's foot: the signature and an exam's arrow rise by
+  // it and keep their distance to the page's foot (the maintainer, 2026-10-29, TYTO-469).
+  const lift = context.size.h - page.size.h;
 
   const role = roleOf(context);
   const body =
@@ -121,7 +124,7 @@ export const build: TemplateBuild = (context: TemplateContext) => {
       ? cover(context, ink)
       : role === 'contracapa'
         ? backCover(context, ink)
-        : exam(context, ink, Math.min(EXAM.footerTop, page.size.h));
+        : exam(context, ink, EXAM.footerTop - lift);
 
   const dark = role !== 'lamina';
   return frame({
@@ -138,7 +141,7 @@ export const build: TemplateBuild = (context: TemplateContext) => {
         drawLogo(context.brand, dark ? 60 : 68, oneInk(dark ? ink('accent') : ink('title-ink'))),
       ),
       ...body,
-      signature(context, dark ? ink('accent') : ink('title-ink'), dark ? 1215 : 1218),
+      signature(context, dark ? ink('accent') : ink('title-ink'), (dark ? 1215 : 1218) - lift),
       ...page.seal,
     ],
   });
@@ -324,12 +327,12 @@ const LINK: Icon = {
  * `card-padding` on every side and is centred on the slide. One title line and a subtitle put
  * every piece where the reference art has it.
  *
- * Nothing shrinks to fit. A card whose foot passes `limit` — the top of the arrow and the
- * signature, or of the seal when it is higher — is reported as `W_TEMPLATE_OVERFLOW` on its
- * `::lamina` (Tyto ADR 0058). Measured on a render: with a subtitle, every title line adds
+ * The arrow stands at `footerTop`: the reference's, or as much higher as the seal's band on the
+ * last slide. Nothing shrinks to fit. A card whose foot passes it, the top of the arrow and the
+ * signature, is reported as `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058). Measured on a render: with a subtitle, every title line adds
  * 72 px and every card line 48, and one title line holds 11 facts, four lines hold 7.
  */
-function exam(context: TemplateContext, ink: Ink, limit: number): NodeDraft[] {
+function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[] {
   const value = context.slots['lamina']?.value;
   const all =
     value?.kind === 'rich-text' ? lines(value.text).map((line) => plain(line).trim()) : [];
@@ -368,11 +371,9 @@ function exam(context: TemplateContext, ink: Ink, limit: number): NodeDraft[] {
   }
 
   const facts = card(context, ink, rest, foot + EXAM.cardGap);
-  if (facts !== undefined) reportOverflow(context.report, facts.foot, limit);
+  if (facts !== undefined) reportOverflow(context.report, facts.foot, footerTop);
   nodes.push(...(facts?.nodes ?? []));
-  nodes.push(
-    arrow('seta', { x: 848, y: EXAM.footerTop, w: 151, h: 25, shaft: 7 }, ink('title-ink')),
-  );
+  nodes.push(arrow('seta', { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink('title-ink')));
   return nodes;
 }
 

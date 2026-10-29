@@ -219,16 +219,55 @@ describe('the limits of an exam slide', () => {
     );
   });
 
-  it('stops the card above the seal on an exam that is the last slide', async () => {
-    const brief = (frontmatter: string) =>
-      `---\ntemplate: concursos-abertos\nformats: [grid]\n${frontmatter}---\n${tall(4, 7)}`;
+  it('stops the card above the lifted arrow on an exam that is the last slide', async () => {
+    const sealed = (exam: string) =>
+      `---\ntemplate: concursos-abertos\nformats: [grid]\nselo: ./selo.png\n---\n${exam}`;
 
-    // A padding of 72 puts the foot at 1210.7: above the arrow, 0.7 px into a 140 px seal.
-    const values = { 'card-padding': { value: 72 } };
-
-    expect(await overflows(brief(''), { values })).toEqual([]);
-    expect(await overflows(brief('selo: ./selo.png\n'), { values, assets: anySeal })).toEqual([
-      expect.stringMatching(/runs 1px past/),
+    // 1194.7 fits under the arrow at 1217, and runs 118 px past it once it rises to 1077.
+    expect(await overflows(sealed(tall(4, 7)), { assets: anySeal })).toEqual([
+      expect.stringMatching(/runs 118px past/),
     ]);
+    expect(await overflows(sealed(tall(1, 5)), { assets: anySeal })).toEqual([]);
+  });
+});
+
+describe('the seal', () => {
+  const sealedSlides = async (brief: string): Promise<Frame[]> => {
+    const result = await compiled(
+      `---\ntemplate: concursos-abertos\nformats: [grid]\nselo: ./selo.png\n---\n${brief}`,
+      { assets: anySeal },
+    );
+    return result.value.scene.artworks.flatMap((artwork) => artwork.frames);
+  };
+  const top = (frame: Frame, name: string): number =>
+    nodes(frame).find((node) => node.name === name)!.transform.y;
+  const exam = '::lamina\n  SEDUC QX\n  Vagas: 85';
+
+  it("lifts the back cover's signature by the band, clear of it", async () => {
+    const [open] = await slides('::lamina {contracapa}');
+    const [closed] = await sealedSlides('::lamina {contracapa}');
+
+    expect(nodes(closed!).some((node) => node.name === 'seal')).toBe(true);
+    expect(top(open!, 'assinatura') - top(closed!, 'assinatura')).toBe(140);
+    expect(top(closed!, 'assinatura') + 24.4).toBeLessThan(1350 - 140);
+  });
+
+  it("lifts an exam's arrow and signature when the exam is the last slide", async () => {
+    const [open] = await slides(exam);
+    const [closed] = await sealedSlides(exam);
+
+    expect(top(open!, 'seta') - top(closed!, 'seta')).toBe(140);
+    expect(top(open!, 'assinatura') - top(closed!, 'assinatura')).toBe(140);
+  });
+
+  it('leaves every slide but the last where the reference has it', async () => {
+    const [cover, sealedExam] = await sealedSlides(
+      `::lamina {capa}\n\n${exam}\n\n::lamina {contracapa}`,
+    );
+    const [openCover, openExam] = await slides(`::lamina {capa}\n\n${exam}`);
+
+    expect(top(cover!, 'assinatura')).toBe(top(openCover!, 'assinatura'));
+    expect(top(sealedExam!, 'seta')).toBe(top(openExam!, 'seta'));
+    expect(top(sealedExam!, 'seta')).toBe(1217);
   });
 });

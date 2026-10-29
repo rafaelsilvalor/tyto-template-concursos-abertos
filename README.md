@@ -63,14 +63,14 @@ An exam's first line is its title, a second line with no `:` its subtitle, and e
 `Label: value` line one line of the card. The title breaks between words into lines of at
 most 16 characters; the card hugs its widest fact and wraps a longer one at 780 px, growing
 taller. Nothing shrinks to fit: a card whose foot reaches the arrow and the signature, at
-1217 px, or the seal on the last slide, renders with `W_TEMPLATE_OVERFLOW` on its `::lamina`
-(Tyto ADR 0058). With a subtitle and facts that fit one line each, a one-line title holds 11
+1217 px, renders with `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058). With a subtitle and facts that fit one line each, a one-line title holds 11
 facts and every further title line takes room for one and a half facts: two lines hold 10, three
 hold 8, four hold 7 and five hold 5.
 A contact line gets Instagram's or YouTube's icon when it names them, a link otherwise.
 `abertura`, `chamada`, `fechamento` and `contatos`
-replace the cover's and the back cover's words; `selo: ./selo.png` glues the seal to the foot of
-the back cover.
+replace the cover's and the back cover's words; `selo: ./selo.png` glues the seal, 140 px
+tall, to the foot of the last slide, and that slide's signature (and an exam's arrow, and so the
+room its card has) rise by the band, clear of it.
 
 ## What it may reach
 
@@ -123,7 +123,8 @@ The tests, all without Tyto:
 - `src/template.test.ts`: the carousel's rules on the scene — which slide the brief's marks
   make, a colon line read as a fact and not as the subtitle, the words the brief replaces,
   every text starting inside its slide, and the overflow warning of a card that reaches the
-  arrow or the seal, and of none that stops above them.
+  arrow or the seal, and of none that stops above them; the signature and the arrow lifted
+  clear of the seal on the last slide and nowhere else.
 - `tests/examples.test.ts`: the example brief compiled as Tyto compiles it, through
   `@tyto/template-kit/testing` (Tyto ADR 0152), against the HTML of each slide in
   `tests/__snapshots__/`. Nothing is measured and faces are placeholders, so the snapshot moves

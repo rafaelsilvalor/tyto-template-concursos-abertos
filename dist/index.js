@@ -21768,8 +21768,9 @@ var MARGIN = 80;
 var build = (context) => {
   const ink = (name) => colorValue(context, name, COLOR_DEFAULTS[name]);
   const page = sealed(context.size, sealOf(context));
+  const lift = context.size.h - page.size.h;
   const role = roleOf(context);
-  const body = role === "capa" ? cover(context, ink) : role === "contracapa" ? backCover(context, ink) : exam(context, ink, Math.min(EXAM.footerTop, page.size.h));
+  const body = role === "capa" ? cover(context, ink) : role === "contracapa" ? backCover(context, ink) : exam(context, ink, EXAM.footerTop - lift);
   const dark = role !== "lamina";
   return frame({
     format: context.format,
@@ -21783,7 +21784,7 @@ var build = (context) => {
         drawLogo(context.brand, dark ? 60 : 68, oneInk(dark ? ink("accent") : ink("title-ink")))
       ),
       ...body,
-      signature(context, dark ? ink("accent") : ink("title-ink"), dark ? 1215 : 1218),
+      signature(context, dark ? ink("accent") : ink("title-ink"), (dark ? 1215 : 1218) - lift),
       ...page.seal
     ]
   });
@@ -21903,7 +21904,7 @@ var LINK = {
   size: { w: 24, h: 24 },
   d: capsule(7.8, 16.2, 3.6, 4.6) + capsule(7.8, 16.2, 3.6, 2.2) + capsule(16.2, 7.8, 3.6, 4.6) + capsule(16.2, 7.8, 3.6, 2.2)
 };
-function exam(context, ink, limit) {
+function exam(context, ink, footerTop) {
   const value = context.slots["lamina"]?.value;
   const all = value?.kind === "rich-text" ? lines(value.text).map((line) => plain(line).trim()) : [];
   const written = all.filter((line) => line !== "");
@@ -21938,11 +21939,9 @@ function exam(context, ink, limit) {
     foot = capTop + EXAM.subtitleSize * CAP_HEIGHT;
   }
   const facts = card(context, ink, rest, foot + EXAM.cardGap);
-  if (facts !== void 0) reportOverflow(context.report, facts.foot, limit);
+  if (facts !== void 0) reportOverflow(context.report, facts.foot, footerTop);
   nodes.push(...facts?.nodes ?? []);
-  nodes.push(
-    arrow("seta", { x: 848, y: EXAM.footerTop, w: 151, h: 25, shaft: 7 }, ink("title-ink"))
-  );
+  nodes.push(arrow("seta", { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink("title-ink")));
   return nodes;
 }
 var EXAM = {
