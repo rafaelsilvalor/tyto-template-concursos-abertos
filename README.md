@@ -42,7 +42,10 @@ formats: [grid]
 ```
 
 An exam's first line is its title, a second line with no `:` its subtitle, and every
-`Label: value` line one line of the card. `abertura`, `chamada`, `fechamento` and `contatos`
+`Label: value` line one line of the card. The title breaks between words into lines of at
+most 16 characters; the card hugs its widest fact and wraps a longer one at 780 px, growing
+taller. A contact line gets Instagram's or YouTube's icon when it names them, a link otherwise.
+`abertura`, `chamada`, `fechamento` and `contatos`
 replace the cover's and the back cover's words; `selo: ./selo.png` glues the seal to the foot of
 the back cover.
 
@@ -57,12 +60,15 @@ on the machine crosses only under this permission.
 
 ## What a configuration may change
 
-`templates/concursos-abertos/manifest.yaml` declares nine colour `values` (Tyto ADR 0153): the
-dark slides' gradient and accent, an exam slide's paper and card, and the inks of an exam's
-title, subtitle, labels and values. Each default is the reference art's, so with nothing
-configured the carousel draws as the reference does. A configuration changes a value, never
-which pieces are drawn (Tyto ADR 0151). A manifest with `values` needs a Tyto whose plugin API
-is 0.8 or newer, which is why `engine` is `>=0.8`.
+`templates/concursos-abertos/manifest.yaml` declares twelve `values` (Tyto ADR 0153): nine
+colours — the dark slides' gradient and accent, an exam slide's paper and card, and the inks of
+an exam's title, subtitle, labels and values — and three numbers: `card-padding` (64), the gap
+between the card's edges and its facts; `card-max-width` (780), the card's widest, a 16-character
+title line; and `title-line-max` (16), the characters a title line holds, spaces counted. Each
+default is the reference art's or the maintainer's, so with nothing configured the carousel
+draws as the reference does. A configuration changes a value, never which pieces are drawn
+(Tyto ADR 0151). A manifest with `values` needs a Tyto whose plugin API is 0.8 or newer, which
+is why `engine` is `>=0.8`.
 
 ## Development
 
