@@ -21598,6 +21598,10 @@ function sealed(size, seal) {
   );
   return { size: { w: size.w, h: size.h - seal.height }, seal: [at(0, size.h - seal.height, art)] };
 }
+function reportOverflow(report, bottom, limit) {
+  const overflow = bottom - limit;
+  if (overflow > 0) report({ code: "W_TEMPLATE_OVERFLOW", overflow });
+}
 function lines(text2) {
   const result = [];
   let current = [];
@@ -21764,8 +21768,9 @@ var MARGIN = 80;
 var build = (context) => {
   const ink = (name) => colorValue(context, name, COLOR_DEFAULTS[name]);
   const page = sealed(context.size, sealOf(context));
+  const lift = context.size.h - page.size.h;
   const role = roleOf(context);
-  const body = role === "capa" ? cover(context, ink) : role === "contracapa" ? backCover(context, ink) : exam(context, ink);
+  const body = role === "capa" ? cover(context, ink) : role === "contracapa" ? backCover(context, ink) : exam(context, ink, EXAM.footerTop - lift);
   const dark = role !== "lamina";
   return frame({
     format: context.format,
@@ -21779,7 +21784,7 @@ var build = (context) => {
         drawLogo(context.brand, dark ? 60 : 68, oneInk(dark ? ink("accent") : ink("title-ink")))
       ),
       ...body,
-      signature(context, dark ? ink("accent") : ink("title-ink"), dark ? 1215 : 1218),
+      signature(context, dark ? ink("accent") : ink("title-ink"), (dark ? 1215 : 1218) - lift),
       ...page.seal
     ]
   });
@@ -21899,7 +21904,7 @@ var LINK = {
   size: { w: 24, h: 24 },
   d: capsule(7.8, 16.2, 3.6, 4.6) + capsule(7.8, 16.2, 3.6, 2.2) + capsule(16.2, 7.8, 3.6, 4.6) + capsule(16.2, 7.8, 3.6, 2.2)
 };
-function exam(context, ink) {
+function exam(context, ink, footerTop) {
   const value = context.slots["lamina"]?.value;
   const all = value?.kind === "rich-text" ? lines(value.text).map((line) => plain(line).trim()) : [];
   const written = all.filter((line) => line !== "");
@@ -21933,12 +21938,16 @@ function exam(context, ink) {
     );
     foot = capTop + EXAM.subtitleSize * CAP_HEIGHT;
   }
-  nodes.push(...card(context, ink, rest, foot + EXAM.cardGap));
-  nodes.push(arrow("seta", { x: 848, y: 1217, w: 151, h: 25, shaft: 7 }, ink("title-ink")));
+  const facts = card(context, ink, rest, foot + EXAM.cardGap);
+  if (facts !== void 0) reportOverflow(context.report, facts.foot, footerTop);
+  nodes.push(...facts?.nodes ?? []);
+  nodes.push(arrow("seta", { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink("title-ink")));
   return nodes;
 }
 var EXAM = {
   titleTop: 368,
+  /** The top of the arrow, the highest thing at the foot; the signature's capitals start below it. */
+  footerTop: 1217,
   titleSize: 72,
   subtitleSize: 40,
   /** From the foot of the subtitle's capitals to the card's top edge. */
@@ -21967,7 +21976,7 @@ function card(context, ink, facts, top) {
     ];
   });
   const [first, ...others] = runs;
-  if (first === void 0) return [];
+  if (first === void 0) return void 0;
   const padding = numberValue(context, "card-padding", NUMBER_DEFAULTS["card-padding"]);
   const widest = numberValue(context, "card-max-width", NUMBER_DEFAULTS["card-max-width"]) - padding * 2;
   const pitch = EXAM.factSize * EXAM.factLineHeight;
@@ -21988,7 +21997,7 @@ function card(context, ink, facts, top) {
   };
   const left = Math.round((SLIDE_WIDTH - size.w) / 2);
   const capTop = top + padding;
-  return [
+  const nodes = [
     rect({
       name: "card",
       size,
@@ -22003,6 +22012,7 @@ function card(context, ink, facts, top) {
       { x: left + padding, y: capTop - capOffset(EXAM.factSize, EXAM.factLineHeight) }
     )
   ];
+  return { nodes, foot: top + size.h };
 }
 var SHADOW = {
   kind: "shadow",

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { defineTemplate, formatCatalogue, parseManifest } from '@tyto/core';
 import { compileTemplate } from '@tyto/template-kit/testing';
+import type { CompileTemplateOptions } from '@tyto/template-kit/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,7 +14,7 @@ import {
   wrapAt,
 } from './template.js';
 
-import type { Frame, RectNode, SceneNode, TextNode } from '@tyto/core';
+import type { AssetResolver, Frame, RectNode, SceneNode, TextNode } from '@tyto/core';
 
 /**
  * The carousel's rules, asserted on the scene: which slide the brief's marks make, what each
@@ -32,14 +33,43 @@ if (!manifest.ok) throw new Error(manifest.error.map((item) => item.message).joi
 const template = defineTemplate(manifest.value, build);
 const formats = formatCatalogue({ grid: { w: 1080, h: 1350, kind: 'grid' } });
 
-async function slides(brief: string): Promise<Frame[]> {
+/** A seal the brief's `selo:` finds whatever it names; no file is read. */
+const anySeal: AssetResolver = {
+  base: '.',
+  resolve: (reference) =>
+    Promise.resolve({ id: reference, source: 'file', path: reference, hash: 'selo' }),
+};
+
+async function compiled(
+  brief: string,
+  options: Pick<CompileTemplateOptions, 'assets' | 'values'> = {},
+) {
   const result = await compileTemplate({
-    brief: `---\ntemplate: concursos-abertos\nformats: [grid]\n---\n${brief}`,
+    brief: brief.startsWith('---')
+      ? brief
+      : `---\ntemplate: concursos-abertos\nformats: [grid]\n---\n${brief}`,
     template,
     formats,
+    ...options,
   });
   if (!result.ok) throw new Error(result.error.map((item) => item.message).join('\n'));
+  return result;
+}
+
+async function slides(brief: string): Promise<Frame[]> {
+  const result = await compiled(brief);
   return result.value.scene.artworks.flatMap((artwork) => artwork.frames);
+}
+
+/** The `W_TEMPLATE_OVERFLOW` warnings a brief compiles with, their messages. */
+async function overflows(
+  brief: string,
+  options: Pick<CompileTemplateOptions, 'assets' | 'values'> = {},
+): Promise<string[]> {
+  const result = await compiled(brief, options);
+  return result.diagnostics
+    .filter((item) => item.code === 'W_TEMPLATE_OVERFLOW')
+    .map((item) => item.message);
 }
 
 function nodes(parent: { readonly children: readonly SceneNode[] }): SceneNode[] {
@@ -161,5 +191,83 @@ describe('the limits of an exam slide', () => {
     );
 
     expect(card(four!).transform.y - card(one!).transform.y).toBe(3 * 72);
+  });
+
+  // Measured on a render (TYTO-469): with a subtitle the card's foot is 882.7 px for one title
+  // line and five facts, plus 72 a title line and 48 a fact; the arrow starts at 1217.
+  const tall = (titleLines: number, factCount: number): string =>
+    [
+      '::lamina',
+      `  ${Array.from({ length: titleLines }, () => 'Concurso Vale').join(' ')}`,
+      '  Professor',
+      ...Array.from({ length: factCount }, (_, index) => `  Fato ${index + 1}: valor`),
+    ].join('\n');
+
+  it('reports a card that runs into the arrow and the signature, by how far', async () => {
+    const reports = await overflows(
+      ['::lamina', '  SEDUC QX', '  Vagas: 85', tall(4, 9)].join('\n'),
+    );
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatch(/lamina-2.*runs 74px past/);
+  });
+
+  it('says nothing when the card stops above the arrow', async () => {
+    expect(await overflows(tall(4, 7))).toEqual([]);
+    expect(await overflows(read('../templates/concursos-abertos/examples/semana.brief'))).toEqual(
+      [],
+    );
+  });
+
+  it('stops the card above the lifted arrow on an exam that is the last slide', async () => {
+    const sealed = (exam: string) =>
+      `---\ntemplate: concursos-abertos\nformats: [grid]\nselo: ./selo.png\n---\n${exam}`;
+
+    // 1194.7 fits under the arrow at 1217, and runs 118 px past it once it rises to 1077.
+    expect(await overflows(sealed(tall(4, 7)), { assets: anySeal })).toEqual([
+      expect.stringMatching(/runs 118px past/),
+    ]);
+    expect(await overflows(sealed(tall(1, 5)), { assets: anySeal })).toEqual([]);
+  });
+});
+
+describe('the seal', () => {
+  const sealedSlides = async (brief: string): Promise<Frame[]> => {
+    const result = await compiled(
+      `---\ntemplate: concursos-abertos\nformats: [grid]\nselo: ./selo.png\n---\n${brief}`,
+      { assets: anySeal },
+    );
+    return result.value.scene.artworks.flatMap((artwork) => artwork.frames);
+  };
+  const top = (frame: Frame, name: string): number =>
+    nodes(frame).find((node) => node.name === name)!.transform.y;
+  const exam = '::lamina\n  SEDUC QX\n  Vagas: 85';
+
+  it("lifts the back cover's signature by the band, clear of it", async () => {
+    const [open] = await slides('::lamina {contracapa}');
+    const [closed] = await sealedSlides('::lamina {contracapa}');
+
+    expect(nodes(closed!).some((node) => node.name === 'seal')).toBe(true);
+    expect(top(open!, 'assinatura') - top(closed!, 'assinatura')).toBe(140);
+    expect(top(closed!, 'assinatura') + 24.4).toBeLessThan(1350 - 140);
+  });
+
+  it("lifts an exam's arrow and signature when the exam is the last slide", async () => {
+    const [open] = await slides(exam);
+    const [closed] = await sealedSlides(exam);
+
+    expect(top(open!, 'seta') - top(closed!, 'seta')).toBe(140);
+    expect(top(open!, 'assinatura') - top(closed!, 'assinatura')).toBe(140);
+  });
+
+  it('leaves every slide but the last where the reference has it', async () => {
+    const [cover, sealedExam] = await sealedSlides(
+      `::lamina {capa}\n\n${exam}\n\n::lamina {contracapa}`,
+    );
+    const [openCover, openExam] = await slides(`::lamina {capa}\n\n${exam}`);
+
+    expect(top(cover!, 'assinatura')).toBe(top(openCover!, 'assinatura'));
+    expect(top(sealedExam!, 'seta')).toBe(top(openExam!, 'seta'));
+    expect(top(sealedExam!, 'seta')).toBe(1217);
   });
 });

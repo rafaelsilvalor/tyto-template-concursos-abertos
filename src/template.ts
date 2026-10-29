@@ -34,7 +34,7 @@ import {
   vector,
 } from '@tyto/core/template';
 import { drawLogo, oneInk, sealOf, signatureOf } from '@tyto/house-style';
-import { at, lines, plain, sealed } from '@tyto/template-kit';
+import { at, lines, plain, reportOverflow, sealed } from '@tyto/template-kit';
 
 import type { TemplateBuild, TemplateContext } from '@tyto/core';
 import type { NodeDraft } from '@tyto/core/template';
@@ -114,6 +114,9 @@ const MARGIN = 80;
 export const build: TemplateBuild = (context: TemplateContext) => {
   const ink = (name: ColorName) => colorValue(context, name, COLOR_DEFAULTS[name]);
   const page = sealed(context.size, sealOf(context));
+  // The seal's band, glued to the last slide's foot: the signature and an exam's arrow rise by
+  // it and keep their distance to the page's foot (the maintainer, 2026-10-29, TYTO-469).
+  const lift = context.size.h - page.size.h;
 
   const role = roleOf(context);
   const body =
@@ -121,7 +124,7 @@ export const build: TemplateBuild = (context: TemplateContext) => {
       ? cover(context, ink)
       : role === 'contracapa'
         ? backCover(context, ink)
-        : exam(context, ink);
+        : exam(context, ink, EXAM.footerTop - lift);
 
   const dark = role !== 'lamina';
   return frame({
@@ -138,7 +141,7 @@ export const build: TemplateBuild = (context: TemplateContext) => {
         drawLogo(context.brand, dark ? 60 : 68, oneInk(dark ? ink('accent') : ink('title-ink'))),
       ),
       ...body,
-      signature(context, dark ? ink('accent') : ink('title-ink'), dark ? 1215 : 1218),
+      signature(context, dark ? ink('accent') : ink('title-ink'), (dark ? 1215 : 1218) - lift),
       ...page.seal,
     ],
   });
@@ -323,8 +326,13 @@ const LINK: Icon = {
  * `title-line-max` characters, the subtitle, and the card, which wraps its facts with
  * `card-padding` on every side and is centred on the slide. One title line and a subtitle put
  * every piece where the reference art has it.
+ *
+ * The arrow stands at `footerTop`: the reference's, or as much higher as the seal's band on the
+ * last slide. Nothing shrinks to fit. A card whose foot passes it, the top of the arrow and the
+ * signature, is reported as `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058). Measured on a render: with a subtitle, every title line adds
+ * 72 px and every card line 48, and one title line holds 11 facts, four lines hold 7.
  */
-function exam(context: TemplateContext, ink: Ink): NodeDraft[] {
+function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[] {
   const value = context.slots['lamina']?.value;
   const all =
     value?.kind === 'rich-text' ? lines(value.text).map((line) => plain(line).trim()) : [];
@@ -362,14 +370,18 @@ function exam(context: TemplateContext, ink: Ink): NodeDraft[] {
     foot = capTop + EXAM.subtitleSize * CAP_HEIGHT;
   }
 
-  nodes.push(...card(context, ink, rest, foot + EXAM.cardGap));
-  nodes.push(arrow('seta', { x: 848, y: 1217, w: 151, h: 25, shaft: 7 }, ink('title-ink')));
+  const facts = card(context, ink, rest, foot + EXAM.cardGap);
+  if (facts !== undefined) reportOverflow(context.report, facts.foot, footerTop);
+  nodes.push(...(facts?.nodes ?? []));
+  nodes.push(arrow('seta', { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink('title-ink')));
   return nodes;
 }
 
 /** An exam slide's numbers, the reference art's: sizes, where the title starts, the gaps. */
 const EXAM = {
   titleTop: 368,
+  /** The top of the arrow, the highest thing at the foot; the signature's capitals start below it. */
+  footerTop: 1217,
   titleSize: 72,
   subtitleSize: 40,
   /** From the foot of the subtitle's capitals to the card's top edge. */
@@ -381,15 +393,16 @@ const EXAM = {
 } as const;
 
 /**
- * The card and its facts. Its edges sit `card-padding` from the facts' first capitals, from
- * the foot of the last line's capitals, and from the widest line's sides.
+ * The card and its facts, and where the card's edge ends (its shadow not counted), or nothing
+ * when the exam writes no fact. Its edges sit `card-padding` from the facts' first capitals,
+ * from the foot of the last line's capitals, and from the widest line's sides.
  */
 function card(
   context: TemplateContext,
   ink: Ink,
   facts: readonly string[],
   top: number,
-): NodeDraft[] {
+): { readonly nodes: NodeDraft[]; readonly foot: number } | undefined {
   const runs = facts.flatMap((line, index) => {
     const split = line.indexOf(':');
     const label = split < 0 ? line : line.slice(0, split + 1);
@@ -410,7 +423,7 @@ function card(
     ];
   });
   const [first, ...others] = runs;
-  if (first === undefined) return [];
+  if (first === undefined) return undefined;
 
   const padding = numberValue(context, 'card-padding', NUMBER_DEFAULTS['card-padding']);
   const widest =
@@ -439,7 +452,7 @@ function card(
   };
   const left = Math.round((SLIDE_WIDTH - size.w) / 2);
   const capTop = top + padding;
-  return [
+  const nodes = [
     rect({
       name: 'card',
       size,
@@ -454,6 +467,7 @@ function card(
       { x: left + padding, y: capTop - capOffset(EXAM.factSize, EXAM.factLineHeight) },
     ),
   ];
+  return { nodes, foot: top + size.h };
 }
 
 /**

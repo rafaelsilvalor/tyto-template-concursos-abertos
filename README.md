@@ -11,13 +11,31 @@ words on the back cover and the example brief are invented copy.
 
 ## Install into Tyto
 
+A plugin file pins the template to a release (Tyto ADR 0151). Save this as
+`TYTO_HOME/plugin-files/concursos-abertos.yaml` (`~/.tyto` by default), or as
+`.tyto/plugin-files/concursos-abertos.yaml` beside a project's briefs:
+
+```yaml
+version: 1
+templates:
+  concursos-abertos:
+    source:
+      git: https://github.com/rafaelsilvalor/tyto-template-concursos-abertos.git
+      ref: v0.2.0
+```
+
+Tyto fetches the tag the next time it loads templates, or now with `tyto plugin sync`, and asks
+once for the permission below (`--yes` approves it). To move to a later release, change `ref`.
+
+Or install the default branch, as it is:
+
 ```
 tyto plugin install git+https://github.com/rafaelsilvalor/tyto-template-concursos-abertos.git
 ```
 
-Tyto clones the default branch and never builds it, so `dist/index.js` is committed on `main`
-and every release is a tag of it. To take a change pushed here, run the same command again:
-installing a name that is already installed replaces it.
+Tyto never builds what it fetches, so `dist/index.js` is committed on `main` and every release is
+a tag of it. To take a change pushed here, run the same command again: installing a name that is
+already installed replaces it.
 
 A pack brings templates and no formats. Copy `templates/formats.yaml` into the project that
 renders `concursos-abertos`, or merge its `grid` line into the project's own. A brief marks its
@@ -44,10 +62,15 @@ formats: [grid]
 An exam's first line is its title, a second line with no `:` its subtitle, and every
 `Label: value` line one line of the card. The title breaks between words into lines of at
 most 16 characters; the card hugs its widest fact and wraps a longer one at 780 px, growing
-taller. A contact line gets Instagram's or YouTube's icon when it names them, a link otherwise.
+taller. Nothing shrinks to fit: a card whose foot reaches the arrow and the signature, at
+1217 px, renders with `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058). With a subtitle and facts that fit one line each, a one-line title holds 11
+facts and every further title line takes room for one and a half facts: two lines hold 10, three
+hold 8, four hold 7 and five hold 5.
+A contact line gets Instagram's or YouTube's icon when it names them, a link otherwise.
 `abertura`, `chamada`, `fechamento` and `contatos`
-replace the cover's and the back cover's words; `selo: ./selo.png` glues the seal to the foot of
-the back cover.
+replace the cover's and the back cover's words; `selo: ./selo.png` glues the seal, 140 px
+tall, to the foot of the last slide, and that slide's signature (and an exam's arrow, and so the
+room its card has) rise by the band, clear of it.
 
 ## What it may reach
 
@@ -89,11 +112,19 @@ echo '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >> ~/.npmrc
 NODE_AUTH_TOKEN=$(gh auth token) pnpm install
 ```
 
+Or, writing nothing to `~/.npmrc`, hand pnpm the token for that one command:
+
+```sh
+pnpm install "--//npm.pkg.github.com/:_authToken=$(gh auth token)"
+```
+
 The tests, all without Tyto:
 
 - `src/template.test.ts`: the carousel's rules on the scene — which slide the brief's marks
-  make, a colon line read as a fact and not as the subtitle, the words the brief replaces, and
-  every text starting inside its slide.
+  make, a colon line read as a fact and not as the subtitle, the words the brief replaces,
+  every text starting inside its slide, and the overflow warning of a card that reaches the
+  arrow or the seal, and of none that stops above them; the signature and the arrow lifted
+  clear of the seal on the last slide and nowhere else.
 - `tests/examples.test.ts`: the example brief compiled as Tyto compiles it, through
   `@tyto/template-kit/testing` (Tyto ADR 0152), against the HTML of each slide in
   `tests/__snapshots__/`. Nothing is measured and faces are placeholders, so the snapshot moves
