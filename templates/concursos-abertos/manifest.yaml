@@ -34,9 +34,18 @@ slots:
 adjustments:
   capa: { type: flag, applies: [lamina] }
   contracapa: { type: flag, applies: [lamina] }
-# What a configuration may change (Tyto ADR 0153): the colours. Each default is the reference
-# art's, and `tests/values.test.ts` pins them equal to the ones the code falls back to.
+# What a configuration may change (Tyto ADR 0153): the colours, the card's padding and the
+# title's line length. Each default is the reference art's or the maintainer's, and
+# `tests/values.test.ts` pins them equal to the ones the code falls back to.
 values:
+  # From the card's edges to its facts, on every side.
+  card-padding: { type: length, default: 64, min: 24, max: 120 }
+  # The card's widest, edges included: the title's widest, a 16-character line in the title's
+  # face. Past it a fact wraps and the card grows taller; under it the card hugs its widest line.
+  card-max-width: { type: length, default: 780, min: 400, max: 920 }
+  # An exam's title breaks between words into lines of at most this many characters, spaces
+  # counted.
+  title-line-max: { type: number, default: 16, min: 8, max: 40 }
   # The cover's and the back cover's gradient, top to foot.
   deep: { type: color, default: '#00153d' }
   shallow: { type: color, default: '#00599a' }

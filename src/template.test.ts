@@ -4,9 +4,16 @@ import { defineTemplate, formatCatalogue, parseManifest } from '@tyto/core';
 import { compileTemplate } from '@tyto/template-kit/testing';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_CALL, DEFAULT_CLOSING, DEFAULT_OPENING, build } from './template.js';
+import {
+  DEFAULT_CALL,
+  DEFAULT_CLOSING,
+  DEFAULT_OPENING,
+  NUMBER_DEFAULTS,
+  build,
+  wrapAt,
+} from './template.js';
 
-import type { Frame, SceneNode, TextNode } from '@tyto/core';
+import type { Frame, RectNode, SceneNode, TextNode } from '@tyto/core';
 
 /**
  * The carousel's rules, asserted on the scene: which slide the brief's marks make, what each
@@ -66,7 +73,7 @@ describe('the three slides', () => {
     expect(named(cover!, 'abertura-1')).toBe('CONCURSOS');
     expect(named(cover!, 'abertura-2')).toBe('ABERTOS');
     expect(named(cover!, 'chamada')).toBe(DEFAULT_CALL);
-    expect(named(exam!, 'titulo')).toBe('PREFEITURA DE VALE ALTO');
+    expect(named(exam!, 'titulo')).toBe('PREFEITURA DE\nVALE ALTO');
     expect(named(exam!, 'subtitulo')).toBe('PROFESSOR');
     expect(named(exam!, 'fatos')).toBe('Banca: Quintex\nVagas: 1.200');
     expect(named(back!, 'fechamento')).toBe(DEFAULT_CLOSING);
@@ -111,5 +118,48 @@ describe('the three slides', () => {
         expect(node.transform.y, node.name).toBeLessThan(1350);
       }
     }
+  });
+});
+
+describe('the limits of an exam slide', () => {
+  const card = (frame: Frame): RectNode =>
+    nodes(frame).find((node): node is RectNode => node.kind === 'rect' && node.name === 'card')!;
+
+  it('breaks a title between words into lines of at most 16 characters, spaces counted', async () => {
+    const [exam] = await slides(
+      '::lamina\n  Tribunal Regional do Trabalho da 2a Regiao\n  Banca: FCC',
+    );
+    const lines = named(exam!, 'titulo')!.split('\n');
+
+    expect(lines).toEqual(['TRIBUNAL', 'REGIONAL DO', 'TRABALHO DA 2A', 'REGIAO']);
+    expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(16);
+  });
+
+  it('keeps a word longer than the limit whole, on a line of its own', () => {
+    expect(wrapAt('DESEMBARGADORIAS DO RS', 16)).toEqual(['DESEMBARGADORIAS', 'DO RS']);
+  });
+
+  it('hugs short facts, and never grows wider than the title can be', async () => {
+    const [short, long] = await slides(
+      [
+        '::lamina',
+        '  SEDUC QX',
+        '  Vagas: 85',
+        '::lamina',
+        '  SEDUC QX',
+        '  Remuneração: R$ 7.181,41 mais auxílio alimentação de R$ 1.200,00',
+      ].join('\n'),
+    );
+
+    expect(card(short!).size.w).toBeLessThan(card(long!).size.w);
+    expect(card(long!).size.w).toBeLessThanOrEqual(NUMBER_DEFAULTS['card-max-width']);
+  });
+
+  it('moves the card down by the lines a long title adds', async () => {
+    const [one, four] = await slides(
+      '::lamina\n  SEDUC QX\n  Vagas: 85\n::lamina\n  Tribunal Regional do Trabalho da 2a Regiao\n  Vagas: 85',
+    );
+
+    expect(card(four!).transform.y - card(one!).transform.y).toBe(3 * 72);
   });
 });

@@ -22,6 +22,7 @@
 
 import {
   colorValue,
+  numberValue,
   frame,
   lineBreak,
   linearGradient,
@@ -69,6 +70,19 @@ export const COLOR_DEFAULTS = {
 } as const;
 
 type ColorName = keyof typeof COLOR_DEFAULTS;
+
+/** The numbers a configuration may change, by declared value name, each default the reference's. */
+export const NUMBER_DEFAULTS = {
+  /** An exam's title breaks between words into lines of at most this many characters. */
+  'title-line-max': 16,
+  /** From the card's edges to its facts, on every side. */
+  'card-padding': 64,
+  /**
+   * The card's widest, edges included: the title's widest, a 16-character line in the title's
+   * face (`CONCURSOS ABERTO`, 777 px). Past it a fact wraps and the card grows taller.
+   */
+  'card-max-width': 780,
+} as const;
 
 const FACE = { family: 'CircularXX', source: 'system' } as const;
 const LIGHT = 300;
@@ -184,7 +198,11 @@ function cover(context: TemplateContext, ink: Ink): NodeDraft[] {
 /* --------------------------------------------------------------------- the back cover -- */
 
 function backCover(context: TemplateContext, ink: Ink): NodeDraft[] {
+  const contacts = slotText(context, 'contatos', DEFAULT_CONTACTS).split('\n');
   return [
+    ...contacts.map((line, index) =>
+      contactIcon(line, CONTACT.iconCentreX, CONTACT.firstCentreY + index * CONTACT.pitch, ink),
+    ),
     kicker(context, ink),
     textAt('fechamento', slotText(context, 'fechamento', DEFAULT_CLOSING), {
       // The reference's lines are 685 px at the widest, centred on the slide; 700 leaves the
@@ -211,11 +229,100 @@ function backCover(context: TemplateContext, ink: Ink): NodeDraft[] {
   ];
 }
 
+/**
+ * The contact lines' icons, the reference's: centred 45 px left of the words, each on its
+ * line's capitals, a line every 66 px.
+ */
+const CONTACT = { iconCentreX: 305, firstCentreY: 711, pitch: 66 } as const;
+
+/**
+ * The icon a contact line gets from its words: Instagram's or YouTube's when it names them,
+ * a chain link for anything else. Drawn as geometry in the accent, as the reference draws them.
+ */
+function contactIcon(line: string, centreX: number, centreY: number, ink: Ink): NodeDraft {
+  const words = line.toLowerCase();
+  const icon = words.includes('instagram') ? INSTAGRAM : words.includes('youtube') ? YOUTUBE : LINK;
+  return vector({
+    name: `icone-${icon.name}`,
+    geometry: { kind: 'path', d: icon.d, fillRule: 'evenodd' },
+    size: icon.size,
+    fill: solid(ink('accent')),
+    transform: { x: centreX - icon.size.w / 2, y: centreY - icon.size.h / 2 },
+  });
+}
+
+interface Icon {
+  readonly name: string;
+  readonly size: { readonly w: number; readonly h: number };
+  readonly d: string;
+}
+
+function roundedRect(x: number, y: number, w: number, h: number, r: number): string {
+  return (
+    `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}` +
+    `A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}` +
+    `V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
+  );
+}
+
+function circle(cx: number, cy: number, r: number): string {
+  return `M${cx - r} ${cy}A${r} ${r} 0 1 1 ${cx + r} ${cy}A${r} ${r} 0 1 1 ${cx - r} ${cy}Z`;
+}
+
+/** A capsule of half-length `length` and radius `r` around (cx, cy), along a 45° rise. */
+function capsule(cx: number, cy: number, length: number, r: number): string {
+  const along = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+  const across = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
+  const point = (a: number, b: number) =>
+    `${round(cx + along.x * a + across.x * b)} ${round(cy + along.y * a + across.y * b)}`;
+  return (
+    `M${point(length, -r)}A${r} ${r} 0 0 1 ${point(length, r)}` +
+    `L${point(-length, r)}A${r} ${r} 0 0 1 ${point(-length, -r)}Z`
+  );
+}
+
+const round = (value: number) => Math.round(value * 100) / 100;
+
+/** A rounded square outline, a ring and a dot, 31 px, as the reference's. */
+const INSTAGRAM: Icon = {
+  name: 'instagram',
+  size: { w: 31, h: 31 },
+  d:
+    roundedRect(0, 0, 31, 31, 9) +
+    roundedRect(3, 3, 25, 25, 6.5) +
+    circle(15.5, 15.5, 7.5) +
+    circle(15.5, 15.5, 4.7) +
+    circle(23.8, 7.2, 2),
+};
+
+/** A rounded rectangle with a play triangle cut out, 34 × 23 px, as the reference's. */
+const YOUTUBE: Icon = {
+  name: 'youtube',
+  size: { w: 34, h: 23 },
+  d: roundedRect(0, 0, 34, 23, 6) + 'M13.5 6.5L22.5 11.5L13.5 16.5Z',
+};
+
+/** Two interlocked capsule outlines on a 45° rise, 24 px, as the reference's. */
+const LINK: Icon = {
+  name: 'link',
+  size: { w: 24, h: 24 },
+  d:
+    capsule(7.8, 16.2, 3.6, 4.6) +
+    capsule(7.8, 16.2, 3.6, 2.2) +
+    capsule(16.2, 7.8, 3.6, 4.6) +
+    capsule(16.2, 7.8, 3.6, 2.2),
+};
+
 /* ---------------------------------------------------------------------- an exam slide -- */
 
 /**
  * An exam: its first line is the title, a second line with no `:` the subtitle, and every
  * `Label: value` line after them one line of the card.
+ *
+ * Top to bottom, each piece below the one before: the title in lines of at most
+ * `title-line-max` characters, the subtitle, and the card, which wraps its facts with
+ * `card-padding` on every side and is centred on the slide. One title line and a subtitle put
+ * every piece where the reference art has it.
  */
 function exam(context: TemplateContext, ink: Ink): NodeDraft[] {
   const value = context.slots['lamina']?.value;
@@ -226,65 +333,163 @@ function exam(context: TemplateContext, ink: Ink): NodeDraft[] {
   const subtitle = rest[0] !== undefined && !rest[0].includes(':') ? rest.shift() : undefined;
 
   const centred = { x: 0, width: SLIDE_WIDTH, align: 'center' as const };
+  const titleLines = wrapAt(
+    title.toUpperCase(),
+    numberValue(context, 'title-line-max', NUMBER_DEFAULTS['title-line-max']),
+  );
   const nodes: NodeDraft[] = [
-    textAt('titulo', title.toUpperCase(), {
+    textAt('titulo', titleLines.join('\n'), {
       ...centred,
-      capTop: 368,
-      size: 72,
+      capTop: EXAM.titleTop,
+      size: EXAM.titleSize,
       weight: BLACK,
       color: ink('title-ink'),
     }),
-    ...(subtitle === undefined
-      ? []
-      : [
-          textAt('subtitulo', subtitle.toUpperCase(), {
-            ...centred,
-            capTop: 440,
-            size: 40,
-            weight: BLACK,
-            color: ink('subtitle-ink'),
-          }),
-        ]),
-    rect({
-      name: 'card',
-      size: { w: 576, h: 448 },
-      radius: 24,
-      fill: solid(ink('card')),
-      effects: [
-        { kind: 'shadow', x: 0, y: 8, blur: 24, spread: 0, color: { r: 0, g: 0, b: 0, a: 0.16 } },
-      ],
-      transform: { x: 248, y: 534 },
-    }),
-    arrow('seta', { x: 848, y: 1217, w: 151, h: 25, shaft: 7 }, ink('title-ink')),
   ];
+  // Where the next piece's capitals start: one title line's pitch below the last one.
+  const capTop = EXAM.titleTop + titleLines.length * EXAM.titleSize;
+  let foot = capTop - EXAM.titleSize + EXAM.titleSize * CAP_HEIGHT;
+  if (subtitle !== undefined) {
+    nodes.push(
+      textAt('subtitulo', subtitle.toUpperCase(), {
+        ...centred,
+        capTop,
+        size: EXAM.subtitleSize,
+        weight: BLACK,
+        color: ink('subtitle-ink'),
+      }),
+    );
+    foot = capTop + EXAM.subtitleSize * CAP_HEIGHT;
+  }
 
-  const facts = rest.flatMap((line, index) => {
+  nodes.push(...card(context, ink, rest, foot + EXAM.cardGap));
+  nodes.push(arrow('seta', { x: 848, y: 1217, w: 151, h: 25, shaft: 7 }, ink('title-ink')));
+  return nodes;
+}
+
+/** An exam slide's numbers, the reference art's: sizes, where the title starts, the gaps. */
+const EXAM = {
+  titleTop: 368,
+  titleSize: 72,
+  subtitleSize: 40,
+  /** From the foot of the subtitle's capitals to the card's top edge. */
+  cardGap: 66,
+  factSize: 40,
+  factLineHeight: 1.2,
+  /** A glyph's advance, in em, for when nothing can be measured (a test, CI without the face). */
+  estimatedAdvance: 0.55,
+} as const;
+
+/**
+ * The card and its facts. Its edges sit `card-padding` from the facts' first capitals, from
+ * the foot of the last line's capitals, and from the widest line's sides.
+ */
+function card(
+  context: TemplateContext,
+  ink: Ink,
+  facts: readonly string[],
+  top: number,
+): NodeDraft[] {
+  const runs = facts.flatMap((line, index) => {
     const split = line.indexOf(':');
     const label = split < 0 ? line : line.slice(0, split + 1);
     const detail = split < 0 ? '' : line.slice(split + 1);
     return [
       ...(index > 0 ? [lineBreak()] : []),
-      run(label, { font: FACE, size: 40, weight: MEDIUM, color: ink('label-ink') }),
+      run(label, { font: FACE, size: EXAM.factSize, weight: MEDIUM, color: ink('label-ink') }),
       ...(detail === ''
         ? []
-        : [run(detail, { font: FACE, size: 40, weight: LIGHT, color: ink('value-ink') })]),
+        : [
+            run(detail, {
+              font: FACE,
+              size: EXAM.factSize,
+              weight: LIGHT,
+              color: ink('value-ink'),
+            }),
+          ]),
     ];
   });
-  const [firstFact, ...otherFacts] = facts;
-  if (firstFact !== undefined) {
-    nodes.push(
-      text({
-        name: 'fatos',
-        runs: [firstFact, ...otherFacts],
-        // To the card's inner edge, so the reference's widest line (`Remuneração: R$ 7.181,41`,
-        // 446 px there) does not wrap under a face a few pixels wider.
-        box: { w: 500 },
-        lineHeight: 1.2,
-        transform: { x: 313, y: 599 - capOffset(40, 1.2) },
-      }),
-    );
+  const [first, ...others] = runs;
+  if (first === undefined) return [];
+
+  const padding = numberValue(context, 'card-padding', NUMBER_DEFAULTS['card-padding']);
+  const widest =
+    numberValue(context, 'card-max-width', NUMBER_DEFAULTS['card-max-width']) - padding * 2;
+  const pitch = EXAM.factSize * EXAM.factLineHeight;
+  const draft = (box: { readonly w?: number }, at = { x: 0, y: 0 }) =>
+    text({
+      name: 'fatos',
+      runs: [first, ...others],
+      box,
+      lineHeight: EXAM.factLineHeight,
+      transform: at,
+    });
+
+  const natural = context.measure(draft({}));
+  const width = Math.min(widest, Math.ceil(natural?.width ?? estimatedWidth(facts)));
+  const laid =
+    natural !== undefined && natural.width > widest
+      ? context.measure(draft({ w: widest }))
+      : natural;
+  const lineCount = laid?.lines ?? facts.length;
+
+  const size = {
+    w: width + padding * 2,
+    h: (lineCount - 1) * pitch + EXAM.factSize * CAP_HEIGHT + padding * 2,
+  };
+  const left = Math.round((SLIDE_WIDTH - size.w) / 2);
+  const capTop = top + padding;
+  return [
+    rect({
+      name: 'card',
+      size,
+      radius: 32,
+      fill: solid(ink('card')),
+      effects: [SHADOW],
+      transform: { x: left, y: top },
+    }),
+    // One pixel past the measured width, so the widest line does not wrap on a rounding.
+    draft(
+      { w: width + 1 },
+      { x: left + padding, y: capTop - capOffset(EXAM.factSize, EXAM.factLineHeight) },
+    ),
+  ];
+}
+
+/**
+ * The card's drop shadow, the reference's: black at 35 %, 8 px away at 120° (so 4 px right and
+ * 6.9 px down). Photoshop's 16 px size fades out within 18 px of the edge; a blur of 8
+ * does the same here, measured beside and below the card (10 still reached 25 px).
+ */
+const SHADOW = {
+  kind: 'shadow',
+  x: 4,
+  y: 6.9,
+  blur: 8,
+  spread: 0,
+  color: { r: 0, g: 0, b: 0, a: 0.35 },
+} as const;
+
+function estimatedWidth(facts: readonly string[]): number {
+  const longest = Math.max(0, ...facts.map((line) => [...line].length));
+  return longest * EXAM.estimatedAdvance * EXAM.factSize;
+}
+
+/**
+ * Words in lines of at most `limit` characters, spaces counted. A word longer than the limit
+ * stands on a line of its own rather than being cut.
+ */
+export function wrapAt(words: string, limit: number): string[] {
+  const result: string[] = [];
+  for (const word of words.split(/\s+/).filter((piece) => piece !== '')) {
+    const last = result[result.length - 1];
+    if (last !== undefined && last.length + 1 + word.length <= limit) {
+      result[result.length - 1] = `${last} ${word}`;
+    } else {
+      result.push(word);
+    }
   }
-  return nodes;
+  return result.length === 0 ? [''] : result;
 }
 
 /* ------------------------------------------------------------------------ the shared -- */
