@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { defineTemplate, formatCatalogue, parseManifest } from '@tyto/core';
 import { compileTemplate } from '@tyto/template-kit/testing';
+import type { CompileTemplateOptions } from '@tyto/template-kit/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,7 +14,7 @@ import {
   wrapAt,
 } from './template.js';
 
-import type { Frame, RectNode, SceneNode, TextNode } from '@tyto/core';
+import type { AssetResolver, Frame, RectNode, SceneNode, TextNode } from '@tyto/core';
 
 /**
  * The carousel's rules, asserted on the scene: which slide the brief's marks make, what each
@@ -32,14 +33,43 @@ if (!manifest.ok) throw new Error(manifest.error.map((item) => item.message).joi
 const template = defineTemplate(manifest.value, build);
 const formats = formatCatalogue({ grid: { w: 1080, h: 1350, kind: 'grid' } });
 
-async function slides(brief: string): Promise<Frame[]> {
+/** A seal the brief's `selo:` finds whatever it names; no file is read. */
+const anySeal: AssetResolver = {
+  base: '.',
+  resolve: (reference) =>
+    Promise.resolve({ id: reference, source: 'file', path: reference, hash: 'selo' }),
+};
+
+async function compiled(
+  brief: string,
+  options: Pick<CompileTemplateOptions, 'assets' | 'values'> = {},
+) {
   const result = await compileTemplate({
-    brief: `---\ntemplate: concursos-abertos\nformats: [grid]\n---\n${brief}`,
+    brief: brief.startsWith('---')
+      ? brief
+      : `---\ntemplate: concursos-abertos\nformats: [grid]\n---\n${brief}`,
     template,
     formats,
+    ...options,
   });
   if (!result.ok) throw new Error(result.error.map((item) => item.message).join('\n'));
+  return result;
+}
+
+async function slides(brief: string): Promise<Frame[]> {
+  const result = await compiled(brief);
   return result.value.scene.artworks.flatMap((artwork) => artwork.frames);
+}
+
+/** The `W_TEMPLATE_OVERFLOW` warnings a brief compiles with, their messages. */
+async function overflows(
+  brief: string,
+  options: Pick<CompileTemplateOptions, 'assets' | 'values'> = {},
+): Promise<string[]> {
+  const result = await compiled(brief, options);
+  return result.diagnostics
+    .filter((item) => item.code === 'W_TEMPLATE_OVERFLOW')
+    .map((item) => item.message);
 }
 
 function nodes(parent: { readonly children: readonly SceneNode[] }): SceneNode[] {
@@ -161,5 +191,44 @@ describe('the limits of an exam slide', () => {
     );
 
     expect(card(four!).transform.y - card(one!).transform.y).toBe(3 * 72);
+  });
+
+  // Measured on a render (TYTO-469): with a subtitle the card's foot is 882.7 px for one title
+  // line and five facts, plus 72 a title line and 48 a fact; the arrow starts at 1217.
+  const tall = (titleLines: number, factCount: number): string =>
+    [
+      '::lamina',
+      `  ${Array.from({ length: titleLines }, () => 'Concurso Vale').join(' ')}`,
+      '  Professor',
+      ...Array.from({ length: factCount }, (_, index) => `  Fato ${index + 1}: valor`),
+    ].join('\n');
+
+  it('reports a card that runs into the arrow and the signature, by how far', async () => {
+    const reports = await overflows(
+      ['::lamina', '  SEDUC QX', '  Vagas: 85', tall(4, 9)].join('\n'),
+    );
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatch(/lamina-2.*runs 74px past/);
+  });
+
+  it('says nothing when the card stops above the arrow', async () => {
+    expect(await overflows(tall(4, 7))).toEqual([]);
+    expect(await overflows(read('../templates/concursos-abertos/examples/semana.brief'))).toEqual(
+      [],
+    );
+  });
+
+  it('stops the card above the seal on an exam that is the last slide', async () => {
+    const brief = (frontmatter: string) =>
+      `---\ntemplate: concursos-abertos\nformats: [grid]\n${frontmatter}---\n${tall(4, 7)}`;
+
+    // A padding of 72 puts the foot at 1210.7: above the arrow, 0.7 px into a 140 px seal.
+    const values = { 'card-padding': { value: 72 } };
+
+    expect(await overflows(brief(''), { values })).toEqual([]);
+    expect(await overflows(brief('selo: ./selo.png\n'), { values, assets: anySeal })).toEqual([
+      expect.stringMatching(/runs 1px past/),
+    ]);
   });
 });
