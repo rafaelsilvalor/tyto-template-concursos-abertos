@@ -1,0 +1,53 @@
+name: concursos-abertos
+version: 0.1.0
+brand: marinho
+description: The week's open exams as a 1080×1350 carousel — a cover, one slide per exam with its facts on a card, and a back cover that may close with the seal.
+# The plugin measures nothing yet, but every face it sets is declared: CircularXX is licensed,
+# so it crosses only under the manifest's `font:CircularXX`, approved at install.
+faces:
+  - { family: CircularXX, weight: 300 }
+  - { family: CircularXX, weight: 400 }
+  - { family: CircularXX, weight: 500 }
+  - { family: CircularXX, weight: 700 }
+  - { family: CircularXX, weight: 900 }
+fonts:
+  CircularXX: { alternatives: [Inter, Manrope, DM Sans] }
+formats: [grid]
+slots:
+  # The cover's title, one line each: `CONCURSOS` over `ABERTOS`. Also the tracked words at the
+  # top of the cover and the back cover. Optional: without it the template draws its default.
+  abertura: { type: rich-text, max: 30 }
+  # The call beside the title's second line, three short lines. Optional, with a default.
+  chamada: { type: rich-text, max: 60 }
+  # The back cover's paragraph. Optional, with a default; the brief writes the real one.
+  fechamento: { type: rich-text, max: 160 }
+  # The back cover's contact lines, one per line. Optional, with a default.
+  contatos: { type: rich-text, max: 120 }
+  # The seal art, 1080 × 140, glued to the foot of the back cover, the last slide (TYTO-201).
+  # In the frontmatter: `selo: ./selo.png`.
+  selo: { type: image }
+  # One slide each. The cover is `::lamina {capa}` and the back cover `::lamina {contracapa}`,
+  # both empty: a template cannot add slides of its own. Every other `::lamina` is an exam: its
+  # first line the title, a second line with no `:` the subtitle, and every `Label: value` line
+  # one line of the card. `max` counts slides here, not characters.
+  lamina: { type: rich-text, repeat: true, min: 1, max: 12 }
+adjustments:
+  capa: { type: flag, applies: [lamina] }
+  contracapa: { type: flag, applies: [lamina] }
+# What a configuration may change (Tyto ADR 0153): the colours. Each default is the reference
+# art's, and `tests/values.test.ts` pins them equal to the ones the code falls back to.
+values:
+  # The cover's and the back cover's gradient, top to foot.
+  deep: { type: color, default: '#00153d' }
+  shallow: { type: color, default: '#00599a' }
+  # Every word, rule and mark on the dark slides.
+  accent: { type: color, default: '#00b2f3' }
+  # An exam slide's paper and its card.
+  paper: { type: color, default: '#ffffff' }
+  card: { type: color, default: '#fafafa' }
+  # An exam's title (and the logo and the signature on its slide), its subtitle, and the card's
+  # labels and values.
+  title-ink: { type: color, default: '#11588b' }
+  subtitle-ink: { type: color, default: '#4d4d4d' }
+  label-ink: { type: color, default: '#00578e' }
+  value-ink: { type: color, default: '#646464' }

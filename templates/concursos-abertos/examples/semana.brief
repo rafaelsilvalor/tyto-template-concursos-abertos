@@ -1,0 +1,35 @@
+---
+template: concursos-abertos
+formats: [grid]
+---
+// A week of three open exams, in invented copy. The cover and the back cover are marked and
+// empty, so they draw the template's default words.
+
+::lamina {capa}
+
+::lamina
+  Prefeitura de Vale Alto
+  Professor
+  Banca: Quintex
+  Inscrições: abertas
+  Vagas: 1.200
+  Remuneração: R$ 4.512,30
+  Cargos: Professor
+  Nível: Superior
+  Prova: a confirmar
+
+::lamina
+  SEDUC QX
+  Banca: Ômegas
+  Inscrições: até 14/11
+  Vagas: 3.000
+  Remuneração: R$ 7.181,41
+
+::lamina
+  IFX Norte
+  Técnico
+  Banca: BLM
+  Vagas: 85
+  Nível: Médio
+
+::lamina {contracapa}
