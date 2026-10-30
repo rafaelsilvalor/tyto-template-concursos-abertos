@@ -21574,7 +21574,7 @@ function block(width, height, draft) {
 function at(x, y, item) {
   return shifted(item.draft, x, y);
 }
-function mark(shape, height, fill, name) {
+function mark(shape, height, fill2, name) {
   const scale = height / shape.box.h;
   return block(
     shape.box.w * scale,
@@ -21583,7 +21583,7 @@ function mark(shape, height, fill, name) {
       name,
       geometry: { kind: "path", d: shape.d, fillRule: shape.fillRule },
       size: shape.box,
-      fill: solid(fill),
+      fill: solid(fill2),
       transform: { scaleX: scale, scaleY: scale }
     })
   );
@@ -21914,21 +21914,36 @@ function exam(context, ink, footerTop) {
   const written = all.filter((line) => line !== "");
   const [title = "", ...rest] = written;
   const subtitle = rest[0] !== void 0 && !rest[0].includes(":") ? rest.shift() : void 0;
-  const centred = { x: 0, width: SLIDE_WIDTH, align: "center" };
   const titleLines = wrapAt(
     title.toUpperCase(),
     numberValue(context, "title-line-max", NUMBER_DEFAULTS["title-line-max"])
   );
+  const block2 = (titleTop2) => examBlock(context, ink, titleLines, subtitle, rest, titleTop2);
+  const trial = block2(EXAM.titleTop);
+  const middle = (EXAM.logoFoot + footerTop) / 2;
+  const titleTop = Math.max(
+    EXAM.highestTitleTop,
+    Math.round(middle - (trial.foot - EXAM.titleTop) / 2)
+  );
+  const placed = titleTop === EXAM.titleTop ? trial : block2(titleTop);
+  if (placed.card) reportOverflow(context.report, placed.foot, footerTop);
+  return [
+    ...placed.nodes,
+    arrow("seta", { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink("title-ink"))
+  ];
+}
+function examBlock(context, ink, titleLines, subtitle, facts, titleTop) {
+  const centred = { x: 0, width: SLIDE_WIDTH, align: "center" };
   const nodes = [
     textAt("titulo", titleLines.join("\n"), {
       ...centred,
-      capTop: EXAM.titleTop,
+      capTop: titleTop,
       size: EXAM.titleSize,
       weight: BLACK,
       color: ink("title-ink")
     })
   ];
-  const capTop = EXAM.titleTop + titleLines.length * EXAM.titleSize;
+  const capTop = titleTop + titleLines.length * EXAM.titleSize;
   let foot = capTop - EXAM.titleSize + EXAM.titleSize * CAP_HEIGHT;
   if (subtitle !== void 0) {
     nodes.push(
@@ -21942,14 +21957,17 @@ function exam(context, ink, footerTop) {
     );
     foot = capTop + EXAM.subtitleSize * CAP_HEIGHT;
   }
-  const facts = card(context, ink, rest, foot + EXAM.cardGap);
-  if (facts !== void 0) reportOverflow(context.report, facts.foot, footerTop);
-  nodes.push(...facts?.nodes ?? []);
-  nodes.push(arrow("seta", { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink("title-ink")));
-  return nodes;
+  const laid = card(context, ink, facts, foot + EXAM.cardGap);
+  if (laid === void 0) return { nodes, foot, card: false };
+  return { nodes: [...nodes, ...laid.nodes], foot: laid.foot, card: true };
 }
 var EXAM = {
+  /** Where the block is laid out to measure it; the reference's title top. */
   titleTop: 368,
+  /** The foot of the logo, drawn 68 px tall from 67: the top of the band the block centres in. */
+  logoFoot: 67 + 68,
+  /** The highest a tall block's title may start: a card gap below the logo. */
+  highestTitleTop: 67 + 68 + 66,
   /** The top of the arrow, the highest thing at the foot; the signature's capitals start below it. */
   footerTop: 1217,
   titleSize: 72,
@@ -21970,7 +21988,7 @@ function card(context, ink, facts, top) {
       ...index > 0 ? [lineBreak()] : [],
       run(label, { font: FACE2, size: EXAM.factSize, weight: MEDIUM, color: ink("label-ink") }),
       ...detail === "" ? [] : [
-        run(detail, {
+        run(keepTogether(detail), {
           font: FACE2,
           size: EXAM.factSize,
           weight: LIGHT,
@@ -22030,17 +22048,112 @@ function estimatedWidth(facts) {
   const longest = Math.max(0, ...facts.map((line) => [...line].length));
   return longest * EXAM.estimatedAdvance * EXAM.factSize;
 }
-function wrapAt(words, limit) {
-  const result = [];
-  for (const word of words.split(/\s+/).filter((piece) => piece !== "")) {
-    const last = result[result.length - 1];
-    if (last !== void 0 && last.length + 1 + word.length <= limit) {
-      result[result.length - 1] = `${last} ${word}`;
-    } else {
-      result.push(word);
+var CONNECTORS = /* @__PURE__ */ new Set([
+  "a",
+  "\xE0",
+  "ao",
+  "as",
+  "\xE0s",
+  "aos",
+  "o",
+  "os",
+  "e",
+  "ou",
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "em",
+  "na",
+  "no",
+  "nas",
+  "nos",
+  "com",
+  "para",
+  "por",
+  "r$"
+]);
+var isConnector = (word) => [...word].length === 1 || CONNECTORS.has(word.toLowerCase());
+var NO_BREAK = "\xA0";
+var isDash = (word) => /^[-–—]$/.test(word);
+function unbreakable(words) {
+  const pieces = [];
+  let pending = [];
+  for (const word of words) {
+    const last = pieces[pieces.length - 1];
+    if (isDash(word) && pending.length === 0 && last !== void 0) {
+      last.push(word);
+      continue;
+    }
+    pending.push(word);
+    if (!isConnector(word) || isDash(word)) {
+      pieces.push(pending);
+      pending = [];
     }
   }
-  return result.length === 0 ? [""] : result;
+  if (pending.length > 0) {
+    const last = pieces[pieces.length - 1];
+    if (last === void 0) pieces.push(pending);
+    else last.push(...pending);
+  }
+  return pieces;
+}
+function keepTogether(text2) {
+  const leading = /^\s/.test(text2) ? " " : "";
+  const words = text2.split(/\s+/).filter((piece) => piece !== "");
+  return leading + unbreakable(words).map((piece) => piece.join(NO_BREAK)).join(" ");
+}
+var MOST_PIECES_TO_BALANCE = 16;
+function wrapAt(words, limit) {
+  const pieces = unbreakable(words.split(/\s+/).filter((piece) => piece !== "")).map(
+    (piece) => piece.join(" ")
+  );
+  if (pieces.length === 0) return [""];
+  const greedy = fill(pieces, limit);
+  if (pieces.length > MOST_PIECES_TO_BALANCE) return greedy;
+  let best = greedy;
+  let bestScore = score(greedy);
+  for (let breaks = 0; breaks < 2 ** (pieces.length - 1); breaks += 1) {
+    const lines2 = [];
+    let line = pieces[0];
+    for (let index = 1; index < pieces.length; index += 1) {
+      if (breaks & 2 ** (index - 1)) {
+        lines2.push(line);
+        line = pieces[index];
+      } else {
+        line = `${line} ${pieces[index]}`;
+      }
+    }
+    lines2.push(line);
+    if (lines2.length !== greedy.length) continue;
+    if (lines2.some((text2) => text2.length > limit && text2.includes(" "))) continue;
+    const candidate = score(lines2);
+    if (candidate.longest < bestScore.longest || candidate.longest === bestScore.longest && candidate.ragged < bestScore.ragged) {
+      best = lines2;
+      bestScore = candidate;
+    }
+  }
+  return best;
+}
+function fill(pieces, limit) {
+  const result = [];
+  for (const piece of pieces) {
+    const last = result[result.length - 1];
+    if (last !== void 0 && last.length + 1 + piece.length <= limit) {
+      result[result.length - 1] = `${last} ${piece}`;
+    } else {
+      result.push(piece);
+    }
+  }
+  return result;
+}
+function score(lines2) {
+  const longest = Math.max(...lines2.map((line) => line.length));
+  return {
+    longest,
+    ragged: lines2.reduce((sum, line) => sum + (longest - line.length) ** 2, 0)
+  };
 }
 function arrow(name, box, color2) {
   const head = Math.round(box.h * 0.62);

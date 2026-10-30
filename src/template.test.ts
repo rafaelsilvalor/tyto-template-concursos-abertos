@@ -11,6 +11,7 @@ import {
   DEFAULT_OPENING,
   NUMBER_DEFAULTS,
   build,
+  keepTogether,
   wrapAt,
 } from './template.js';
 
@@ -103,7 +104,7 @@ describe('the three slides', () => {
     expect(named(cover!, 'abertura-1')).toBe('CONCURSOS');
     expect(named(cover!, 'abertura-2')).toBe('ABERTOS');
     expect(named(cover!, 'chamada')).toBe(DEFAULT_CALL);
-    expect(named(exam!, 'titulo')).toBe('PREFEITURA DE\nVALE ALTO');
+    expect(named(exam!, 'titulo')).toBe('PREFEITURA\nDE VALE ALTO');
     expect(named(exam!, 'subtitulo')).toBe('PROFESSOR');
     expect(named(exam!, 'fatos')).toBe('Banca: Quintex\nVagas: 1.200');
     expect(named(back!, 'fechamento')).toBe(DEFAULT_CLOSING);
@@ -179,8 +180,36 @@ describe('the limits of an exam slide', () => {
     );
     const lines = named(exam!, 'titulo')!.split('\n');
 
-    expect(lines).toEqual(['TRIBUNAL', 'REGIONAL DO', 'TRABALHO DA 2A', 'REGIAO']);
+    expect(lines).toEqual(['TRIBUNAL', 'REGIONAL', 'DO TRABALHO', 'DA 2A REGIAO']);
     expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(16);
+  });
+
+  it('balances the lines, so a short last word never stands alone under a full line', () => {
+    expect(wrapAt('FRANCISCO MACEDO (PI)', 16)).toEqual(['FRANCISCO', 'MACEDO (PI)']);
+  });
+
+  it('never ends a line on a connector nor starts one with a dash', () => {
+    expect(wrapAt('UNIVERSIDADE FEDERAL DO CEARÁ — UFC (CE)', 16)).toEqual([
+      'UNIVERSIDADE',
+      'FEDERAL',
+      'DO CEARÁ —',
+      'UFC (CE)',
+    ]);
+  });
+
+  it('glues what must not break on the card with no-break spaces', () => {
+    expect(keepTogether(' Fundamental, Médio e Superior')).toBe(
+      ' Fundamental, Médio e\u00a0Superior',
+    );
+    expect(keepTogether(' até R$ 4.318,00 - mais auxílio')).toBe(
+      ' até R$\u00a04.318,00\u00a0- mais auxílio',
+    );
+  });
+
+  it("glues the card's facts, so the renderer never leaves a lone `e` at a line's end", async () => {
+    const [exam] = await slides('::lamina\n  SEDUC QX\n  Nível: Fundamental, Médio e Superior');
+
+    expect(named(exam!, 'fatos')).toBe('Nível: Fundamental, Médio e\u00a0Superior');
   });
 
   it('keeps a word longer than the limit whole, on a line of its own', () => {
@@ -203,16 +232,6 @@ describe('the limits of an exam slide', () => {
     expect(card(long!).size.w).toBeLessThanOrEqual(NUMBER_DEFAULTS['card-max-width']);
   });
 
-  it('moves the card down by the lines a long title adds', async () => {
-    const [one, four] = await slides(
-      '::lamina\n  SEDUC QX\n  Vagas: 85\n::lamina\n  Tribunal Regional do Trabalho da 2a Regiao\n  Vagas: 85',
-    );
-
-    expect(card(four!).transform.y - card(one!).transform.y).toBe(3 * 72);
-  });
-
-  // Measured on a render (TYTO-469): with a subtitle the card's foot is 882.7 px for one title
-  // line and five facts, plus 72 a title line and 48 a fact; the arrow starts at 1217.
   const tall = (titleLines: number, factCount: number): string =>
     [
       '::lamina',
@@ -221,17 +240,45 @@ describe('the limits of an exam slide', () => {
       ...Array.from({ length: factCount }, (_, index) => `  Fato ${index + 1}: valor`),
     ].join('\n');
 
+  it('keeps the block centred, so three more title lines move the card down by half', async () => {
+    const [one, four] = await slides(
+      '::lamina\n  SEDUC QX\n  Vagas: 85\n::lamina\n  Tribunal Regional do Trabalho da 2a Regiao\n  Vagas: 85',
+    );
+
+    expect(card(four!).transform.y - card(one!).transform.y).toBe((3 * 72) / 2);
+  });
+
+  it('centres the block between the foot of the logo, at 135, and the arrow', async () => {
+    const [exam] = await slides(tall(1, 7));
+    const title = nodes(exam!).find((node) => node.name === 'titulo')!;
+    const box = card(exam!);
+    const foot = box.transform.y + box.size.h;
+    const titleTop = foot - blockHeight(1, 7);
+
+    expect(Math.abs((titleTop + foot) / 2 - (135 + 1217) / 2)).toBeLessThanOrEqual(0.5);
+    expect(title.transform.y).toBeLessThan(titleTop);
+  });
+
+  // Measured on a render (TYTO-469): with a subtitle the block, from the title's capitals to the
+  // card's foot, is 514.7 px for one title line and five facts, plus 72 a title line and 48 a
+  // fact. It centres between 135 and the arrow at 1217, and a block taller than that room
+  // starts at 201, a card gap under the logo.
+  const blockHeight = (titleLines: number, factCount: number): number =>
+    514.7 + 72 * (titleLines - 1) + 48 * (factCount - 5);
+
   it('reports a card that runs into the arrow and the signature, by how far', async () => {
     const reports = await overflows(
-      ['::lamina', '  SEDUC QX', '  Vagas: 85', tall(4, 9)].join('\n'),
+      ['::lamina', '  SEDUC QX', '  Vagas: 85', tall(4, 12)].join('\n'),
     );
 
     expect(reports).toHaveLength(1);
-    expect(reports[0]).toMatch(/lamina-2.*runs 74px past/);
+    // 201 + 1066.7 = 1267.7, 51 px past 1217.
+    expect(reports[0]).toMatch(/lamina-2.*runs 51px past/);
   });
 
   it('says nothing when the card stops above the arrow', async () => {
-    expect(await overflows(tall(4, 7))).toEqual([]);
+    expect(await overflows(tall(4, 10))).toEqual([]);
+    expect(await overflows(tall(1, 15))).toEqual([]);
     expect(await overflows(read('../templates/concursos-abertos/examples/semana.brief'))).toEqual(
       [],
     );
@@ -241,9 +288,9 @@ describe('the limits of an exam slide', () => {
     const sealed = (exam: string) =>
       `---\ntemplate: concursos-abertos\nformats: [grid]\nselo: ./selo.png\n---\n${exam}`;
 
-    // 1194.7 fits under the arrow at 1217, and runs 118 px past it once it rises to 1077.
-    expect(await overflows(sealed(tall(4, 7)), { assets: anySeal })).toEqual([
-      expect.stringMatching(/runs 118px past/),
+    // 922.7 tall from 201 ends at 1123.7: under the arrow at 1217, 47 px past it at 1077.
+    expect(await overflows(sealed(tall(4, 9)), { assets: anySeal })).toEqual([
+      expect.stringMatching(/runs 47px past/),
     ]);
     expect(await overflows(sealed(tall(1, 5)), { assets: anySeal })).toEqual([]);
   });
