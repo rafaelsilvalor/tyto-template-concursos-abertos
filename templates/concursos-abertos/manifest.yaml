@@ -1,5 +1,5 @@
 name: concursos-abertos
-version: 0.2.2
+version: 0.2.3
 brand: marinho
 description: The week's open exams as a 1080×1350 carousel — a cover, one slide per exam with its facts on a card, and a back cover that may close with the seal.
 # The plugin measures nothing yet, but every face it sets is declared: CircularXX is licensed,
