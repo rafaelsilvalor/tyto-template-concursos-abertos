@@ -21,7 +21,7 @@ templates:
   concursos-abertos:
     source:
       git: https://github.com/rafaelsilvalor/tyto-template-concursos-abertos.git
-      ref: v0.2.0
+      ref: v0.2.1
 ```
 
 Tyto fetches the tag the next time it loads templates, or now with `tyto plugin sync`, and asks

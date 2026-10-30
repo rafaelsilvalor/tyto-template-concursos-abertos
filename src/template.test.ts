@@ -149,6 +149,24 @@ describe('the three slides', () => {
       }
     }
   });
+
+  it("sets the signature on the reference's baseline, centred where its letters are", async () => {
+    // Measured against the reference art (TYTO-474): the box starts 4 px in, so its centre is
+    // half a tracking right of the reference's paragraph centre, and its top puts the baseline
+    // on the reference's, 1232.8 on the cover and the back cover and 1235.8 on an exam.
+    const [cover, exam, back] = await slides(CAROUSEL);
+
+    for (const [frame, top] of [
+      [cover!, 1214.5],
+      [exam!, 1217.5],
+      [back!, 1214.5],
+    ] as const) {
+      const signature = texts(frame).find((node) => node.name === 'assinatura')!;
+      expect(signature.transform.x).toBeCloseTo(4, 6);
+      expect(signature.box.w).toBeCloseTo(1076, 6);
+      expect(signature.transform.y).toBeCloseTo(top, 6);
+    }
+  });
 });
 
 describe('the limits of an exam slide', () => {
