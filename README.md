@@ -40,7 +40,9 @@ already installed replaces it.
 A pack brings templates and no formats. Copy `templates/formats.yaml` into the project that
 renders `concursos-abertos`, or merge its `grid` line into the project's own. A brief marks its
 first slide as the cover and its last as the back cover, because one `::lamina` is one slide in
-Tyto and a template cannot add slides of its own:
+Tyto and a template cannot add slides of its own. A brief holds at most 20 `::lamina`, the cover
+and the back cover among them — Instagram's carousel limit — and Tyto refuses a twenty-first with
+`E_BAD_SLOT_VALUE` on it:
 
 ```
 ---
@@ -61,11 +63,16 @@ formats: [grid]
 
 An exam's first line is its title, a second line with no `:` its subtitle, and every
 `Label: value` line one line of the card. The title breaks between words into lines of at
-most 16 characters; the card hugs its widest fact and wraps a longer one at 780 px, growing
-taller. Nothing shrinks to fit: a card whose foot reaches the arrow and the signature, at
-1217 px, renders with `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058). With a subtitle and facts that fit one line each, a one-line title holds 11
-facts and every further title line takes room for one and a half facts: two lines hold 10, three
-hold 8, four hold 7 and five hold 5.
+most 16 characters, as few lines as that allows, balanced so no short word stands alone
+under a full line; a line never ends on a connector (`de`, `do`, `e`, `R$`, any one-letter
+word) nor starts with a dash, which stays with the word before it. The card hugs its widest
+fact and wraps a longer one at 780 px, growing taller, under the same rule: no connector or
+lone character at a line's end. Title, subtitle and card are one block, centred up and down
+between the logo and the arrow, whatever its height. Nothing shrinks to fit: a block taller
+than that room starts a card gap under the logo, and a card whose foot then reaches the arrow
+and the signature, at 1217 px, renders with `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto
+ADR 0058). With a subtitle and facts that fit one line each, a one-line title holds 15 facts,
+two lines 13, three 12, four 10 and five 9.
 A contact line gets Instagram's or YouTube's icon when it names them, a link otherwise.
 `abertura`, `chamada`, `fechamento` and `contatos`
 replace the cover's and the back cover's words; `selo: ./selo.png` glues the seal, 140 px

@@ -328,13 +328,14 @@ const LINK: Icon = {
  *
  * Top to bottom, each piece below the one before: the title in lines of at most
  * `title-line-max` characters, the subtitle, and the card, which wraps its facts with
- * `card-padding` on every side and is centred on the slide. One title line and a subtitle put
- * every piece where the reference art has it.
+ * `card-padding` on every side and is centred on the slide. The three are one block, centred
+ * up and down between the logo's foot and `footerTop`, whatever its height (the maintainer,
+ * 2026-10-30); a block too tall for that starts as high as `highestTitleTop` allows. A title
+ * line, a subtitle and seven facts put the block within 3 px of where the reference art has it.
  *
  * The arrow stands at `footerTop`: the reference's, or as much higher as the seal's band on the
  * last slide. Nothing shrinks to fit. A card whose foot passes it, the top of the arrow and the
- * signature, is reported as `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058). Measured on a render: with a subtitle, every title line adds
- * 72 px and every card line 48, and one title line holds 11 facts, four lines hold 7.
+ * signature, is reported as `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058).
  */
 function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[] {
   const value = context.slots['lamina']?.value;
@@ -343,23 +344,49 @@ function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[
   const written = all.filter((line) => line !== '');
   const [title = '', ...rest] = written;
   const subtitle = rest[0] !== undefined && !rest[0].includes(':') ? rest.shift() : undefined;
-
-  const centred = { x: 0, width: SLIDE_WIDTH, align: 'center' as const };
   const titleLines = wrapAt(
     title.toUpperCase(),
     numberValue(context, 'title-line-max', NUMBER_DEFAULTS['title-line-max']),
   );
+  const block = (titleTop: number) => examBlock(context, ink, titleLines, subtitle, rest, titleTop);
+
+  // Laid out once to learn the block's height, which does not depend on where it starts.
+  const trial = block(EXAM.titleTop);
+  const middle = (EXAM.logoFoot + footerTop) / 2;
+  const titleTop = Math.max(
+    EXAM.highestTitleTop,
+    Math.round(middle - (trial.foot - EXAM.titleTop) / 2),
+  );
+  const placed = titleTop === EXAM.titleTop ? trial : block(titleTop);
+
+  if (placed.card) reportOverflow(context.report, placed.foot, footerTop);
+  return [
+    ...placed.nodes,
+    arrow('seta', { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink('title-ink')),
+  ];
+}
+
+/** The title, the subtitle and the card from `titleTop` down, and the foot of the lowest. */
+function examBlock(
+  context: TemplateContext,
+  ink: Ink,
+  titleLines: readonly string[],
+  subtitle: string | undefined,
+  facts: readonly string[],
+  titleTop: number,
+): { readonly nodes: NodeDraft[]; readonly foot: number; readonly card: boolean } {
+  const centred = { x: 0, width: SLIDE_WIDTH, align: 'center' as const };
   const nodes: NodeDraft[] = [
     textAt('titulo', titleLines.join('\n'), {
       ...centred,
-      capTop: EXAM.titleTop,
+      capTop: titleTop,
       size: EXAM.titleSize,
       weight: BLACK,
       color: ink('title-ink'),
     }),
   ];
   // Where the next piece's capitals start: one title line's pitch below the last one.
-  const capTop = EXAM.titleTop + titleLines.length * EXAM.titleSize;
+  const capTop = titleTop + titleLines.length * EXAM.titleSize;
   let foot = capTop - EXAM.titleSize + EXAM.titleSize * CAP_HEIGHT;
   if (subtitle !== undefined) {
     nodes.push(
@@ -374,16 +401,19 @@ function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[
     foot = capTop + EXAM.subtitleSize * CAP_HEIGHT;
   }
 
-  const facts = card(context, ink, rest, foot + EXAM.cardGap);
-  if (facts !== undefined) reportOverflow(context.report, facts.foot, footerTop);
-  nodes.push(...(facts?.nodes ?? []));
-  nodes.push(arrow('seta', { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink('title-ink')));
-  return nodes;
+  const laid = card(context, ink, facts, foot + EXAM.cardGap);
+  if (laid === undefined) return { nodes, foot, card: false };
+  return { nodes: [...nodes, ...laid.nodes], foot: laid.foot, card: true };
 }
 
 /** An exam slide's numbers, the reference art's: sizes, where the title starts, the gaps. */
 const EXAM = {
+  /** Where the block is laid out to measure it; the reference's title top. */
   titleTop: 368,
+  /** The foot of the logo, drawn 68 px tall from 67: the top of the band the block centres in. */
+  logoFoot: 67 + 68,
+  /** The highest a tall block's title may start: a card gap below the logo. */
+  highestTitleTop: 67 + 68 + 66,
   /** The top of the arrow, the highest thing at the foot; the signature's capitals start below it. */
   footerTop: 1217,
   titleSize: 72,
@@ -417,7 +447,7 @@ function card(
       ...(detail === ''
         ? []
         : [
-            run(detail, {
+            run(keepTogether(detail), {
               font: FACE,
               size: EXAM.factSize,
               weight: LIGHT,
@@ -494,20 +524,154 @@ function estimatedWidth(facts: readonly string[]): number {
 }
 
 /**
- * Words in lines of at most `limit` characters, spaces counted. A word longer than the limit
- * stands on a line of its own rather than being cut.
+ * Short words that read as the start of what follows them: a line never ends on one, in the
+ * title or on the card (the maintainer, 2026-10-30). A one-character word counts too.
  */
-export function wrapAt(words: string, limit: number): string[] {
-  const result: string[] = [];
-  for (const word of words.split(/\s+/).filter((piece) => piece !== '')) {
-    const last = result[result.length - 1];
-    if (last !== undefined && last.length + 1 + word.length <= limit) {
-      result[result.length - 1] = `${last} ${word}`;
-    } else {
-      result.push(word);
+const CONNECTORS = new Set([
+  'a',
+  'à',
+  'ao',
+  'as',
+  'às',
+  'aos',
+  'o',
+  'os',
+  'e',
+  'ou',
+  'de',
+  'da',
+  'do',
+  'das',
+  'dos',
+  'em',
+  'na',
+  'no',
+  'nas',
+  'nos',
+  'com',
+  'para',
+  'por',
+  'r$',
+]);
+
+const isConnector = (word: string): boolean =>
+  [...word].length === 1 || CONNECTORS.has(word.toLowerCase());
+
+/** The space a renderer never breaks a line at. */
+const NO_BREAK = '\u00a0';
+
+/** A dash standing between spaces: it stays at the end of the word before it. */
+const isDash = (word: string): boolean => /^[-–—]$/.test(word);
+
+/**
+ * The words in the pieces a line may break between: a connector (or a lone character) travels
+ * with the word after it, and a dash with the word before it.
+ */
+function unbreakable(words: readonly string[]): string[][] {
+  const pieces: string[][] = [];
+  let pending: string[] = [];
+  for (const word of words) {
+    const last = pieces[pieces.length - 1];
+    if (isDash(word) && pending.length === 0 && last !== undefined) {
+      last.push(word);
+      continue;
+    }
+    pending.push(word);
+    if (!isConnector(word) || isDash(word)) {
+      pieces.push(pending);
+      pending = [];
     }
   }
-  return result.length === 0 ? [''] : result;
+  if (pending.length > 0) {
+    const last = pieces[pieces.length - 1];
+    if (last === undefined) pieces.push(pending);
+    else last.push(...pending);
+  }
+  return pieces;
+}
+
+/**
+ * A card fact with no-break spaces where a line must not break, so the renderer's own wrap
+ * never leaves a connector, a lone character or a dash at a line's edge.
+ */
+export function keepTogether(text: string): string {
+  const leading = /^\s/.test(text) ? ' ' : '';
+  const words = text.split(/\s+/).filter((piece) => piece !== '');
+  return (
+    leading +
+    unbreakable(words)
+      .map((piece) => piece.join(NO_BREAK))
+      .join(' ')
+  );
+}
+
+/** Past this many pieces a title is wrapped greedily: trying every break costs 2^pieces. */
+const MOST_PIECES_TO_BALANCE = 16;
+
+/**
+ * Words in lines of at most `limit` characters, spaces counted: as few lines as greedy filling
+ * makes, with the breaks that leave the longest line shortest, so no line holds a lone word like
+ * "(PI)" under a full one (the maintainer, 2026-10-30). No line ends on a connector or starts
+ * with a dash. A word longer than the limit stands on a line of its own rather than being cut.
+ */
+export function wrapAt(words: string, limit: number): string[] {
+  const pieces = unbreakable(words.split(/\s+/).filter((piece) => piece !== '')).map((piece) =>
+    piece.join(' '),
+  );
+  if (pieces.length === 0) return [''];
+  const greedy = fill(pieces, limit);
+  if (pieces.length > MOST_PIECES_TO_BALANCE) return greedy;
+
+  let best = greedy;
+  let bestScore = score(greedy);
+  // Bit `i` set: a line breaks after piece `i`.
+  for (let breaks = 0; breaks < 2 ** (pieces.length - 1); breaks += 1) {
+    const lines: string[] = [];
+    let line = pieces[0]!;
+    for (let index = 1; index < pieces.length; index += 1) {
+      if (breaks & (2 ** (index - 1))) {
+        lines.push(line);
+        line = pieces[index]!;
+      } else {
+        line = `${line} ${pieces[index]!}`;
+      }
+    }
+    lines.push(line);
+    if (lines.length !== greedy.length) continue;
+    if (lines.some((text) => text.length > limit && text.includes(' '))) continue;
+    const candidate = score(lines);
+    if (
+      candidate.longest < bestScore.longest ||
+      (candidate.longest === bestScore.longest && candidate.ragged < bestScore.ragged)
+    ) {
+      best = lines;
+      bestScore = candidate;
+    }
+  }
+  return best;
+}
+
+/** Greedy filling: each piece on the line before it while the line stays within `limit`. */
+function fill(pieces: readonly string[], limit: number): string[] {
+  const result: string[] = [];
+  for (const piece of pieces) {
+    const last = result[result.length - 1];
+    if (last !== undefined && last.length + 1 + piece.length <= limit) {
+      result[result.length - 1] = `${last} ${piece}`;
+    } else {
+      result.push(piece);
+    }
+  }
+  return result;
+}
+
+/** The longest line, then how far the others fall short of it, squared. */
+function score(lines: readonly string[]): { longest: number; ragged: number } {
+  const longest = Math.max(...lines.map((line) => line.length));
+  return {
+    longest,
+    ragged: lines.reduce((sum, line) => sum + (longest - line.length) ** 2, 0),
+  };
 }
 
 /* ------------------------------------------------------------------------ the shared -- */
