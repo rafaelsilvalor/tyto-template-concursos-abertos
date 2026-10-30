@@ -36,7 +36,7 @@ import {
 import { drawLogo, oneInk, sealOf, signatureOf } from '@tyto/house-style';
 import { at, lines, plain, reportOverflow, sealed } from '@tyto/template-kit';
 
-import type { TemplateBuild, TemplateContext } from '@tyto/core';
+import type { TemplateBuild, TemplateContext, TextMeasurement } from '@tyto/core';
 import type { NodeDraft } from '@tyto/core/template';
 
 /* ------------------------------------------------------------------------- the words -- */
@@ -463,22 +463,25 @@ function card(
   const widest =
     numberValue(context, 'card-max-width', NUMBER_DEFAULTS['card-max-width']) - padding * 2;
   const pitch = EXAM.factSize * EXAM.factLineHeight;
-  const draft = (box: { readonly w?: number }, at = { x: 0, y: 0 }) =>
+  const draft = (
+    box: { readonly w?: number },
+    at = { x: 0, y: 0 },
+    written: NonEmptyRuns = [first, ...others],
+  ) =>
     text({
       name: 'fatos',
-      runs: [first, ...others],
+      runs: written,
       box,
       lineHeight: EXAM.factLineHeight,
       transform: at,
     });
 
-  const natural = context.measure(draft({}));
-  const width = Math.min(widest, Math.ceil(natural?.width ?? estimatedWidth(facts)));
-  const laid =
-    natural !== undefined && natural.width > widest
-      ? context.measure(draft({ w: widest }))
-      : natural;
-  const lineCount = laid?.lines ?? facts.length;
+  const fit = hug((w) => context.measure(draft(w === undefined ? {} : { w })), widest);
+  const width = fit?.width ?? Math.min(widest, Math.ceil(estimatedWidth(facts)));
+  const lineCount = fit?.lines ?? facts.length;
+  // A wrapped card is narrower than the box its facts were wrapped in; its breaks are kept as
+  // they were decided, so the narrower box cannot wrap them anywhere else.
+  const wrapped = fit?.wrappedRuns;
 
   const size = {
     w: width + padding * 2,
@@ -499,9 +502,38 @@ function card(
     draft(
       { w: width + 1 },
       { x: left + padding, y: capTop - capOffset(EXAM.factSize, EXAM.factLineHeight) },
+      wrapped,
     ),
   ];
   return { nodes, foot: top + size.h };
+}
+
+type NonEmptyRuns = Parameters<typeof text>[0]['runs'];
+
+/**
+ * The card's inner width and line count: the facts' widest line, laid out on one line each
+ * when they fit `widest`, and otherwise wrapped at `widest` and measured again, so the card
+ * hugs the widest line the wrap left and not the box it wrapped in (the maintainer,
+ * 2026-10-30: the gap on the right must equal the one on the left). `undefined` when nothing
+ * can be measured. A width is an advance, not ink: a glyph's side bearing is not seen.
+ */
+export function hug(
+  measure: (w?: number) => TextMeasurement | undefined,
+  widest: number,
+):
+  | { readonly width: number; readonly lines: number; readonly wrappedRuns?: NonEmptyRuns }
+  | undefined {
+  const natural = measure();
+  if (natural === undefined) return undefined;
+  if (natural.width <= widest) return { width: Math.ceil(natural.width), lines: natural.lines };
+  const laid = measure(widest);
+  if (laid === undefined) return { width: widest, lines: natural.lines };
+  const [first, ...others] = laid.runs;
+  return {
+    width: Math.min(widest, Math.ceil(laid.width)),
+    lines: laid.lines,
+    ...(first === undefined ? {} : { wrappedRuns: [first, ...others] }),
+  };
 }
 
 /**

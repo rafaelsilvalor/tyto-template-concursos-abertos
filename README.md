@@ -67,7 +67,9 @@ most 16 characters, as few lines as that allows, balanced so no short word stand
 under a full line; a line never ends on a connector (`de`, `do`, `e`, `R$`, any one-letter
 word) nor starts with a dash, which stays with the word before it. The card hugs its widest
 fact and wraps a longer one at 780 px, growing taller, under the same rule: no connector or
-lone character at a line's end. Title, subtitle and card are one block, centred up and down
+lone character at a line's end. A wrapped card then shrinks to the widest line the wrap left,
+so the gap on its right equals the one on its left (measured to the text's advance, not its
+ink). Title, subtitle and card are one block, centred up and down
 between the logo and the arrow, whatever its height. Nothing shrinks to fit: a block taller
 than that room starts a card gap under the logo, and a card whose foot then reaches the arrow
 and the signature, at 1217 px, renders with `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto

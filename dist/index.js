@@ -22002,17 +22002,17 @@ function card(context, ink, facts, top) {
   const padding = numberValue(context, "card-padding", NUMBER_DEFAULTS["card-padding"]);
   const widest = numberValue(context, "card-max-width", NUMBER_DEFAULTS["card-max-width"]) - padding * 2;
   const pitch = EXAM.factSize * EXAM.factLineHeight;
-  const draft = (box, at2 = { x: 0, y: 0 }) => text({
+  const draft = (box, at2 = { x: 0, y: 0 }, written = [first, ...others]) => text({
     name: "fatos",
-    runs: [first, ...others],
+    runs: written,
     box,
     lineHeight: EXAM.factLineHeight,
     transform: at2
   });
-  const natural = context.measure(draft({}));
-  const width = Math.min(widest, Math.ceil(natural?.width ?? estimatedWidth(facts)));
-  const laid = natural !== void 0 && natural.width > widest ? context.measure(draft({ w: widest })) : natural;
-  const lineCount = laid?.lines ?? facts.length;
+  const fit = hug((w) => context.measure(draft(w === void 0 ? {} : { w })), widest);
+  const width = fit?.width ?? Math.min(widest, Math.ceil(estimatedWidth(facts)));
+  const lineCount = fit?.lines ?? facts.length;
+  const wrapped = fit?.wrappedRuns;
   const size = {
     w: width + padding * 2,
     h: (lineCount - 1) * pitch + EXAM.factSize * CAP_HEIGHT + padding * 2
@@ -22031,10 +22031,24 @@ function card(context, ink, facts, top) {
     // One pixel past the measured width, so the widest line does not wrap on a rounding.
     draft(
       { w: width + 1 },
-      { x: left + padding, y: capTop - capOffset(EXAM.factSize, EXAM.factLineHeight) }
+      { x: left + padding, y: capTop - capOffset(EXAM.factSize, EXAM.factLineHeight) },
+      wrapped
     )
   ];
   return { nodes, foot: top + size.h };
+}
+function hug(measure, widest) {
+  const natural = measure();
+  if (natural === void 0) return void 0;
+  if (natural.width <= widest) return { width: Math.ceil(natural.width), lines: natural.lines };
+  const laid = measure(widest);
+  if (laid === void 0) return { width: widest, lines: natural.lines };
+  const [first, ...others] = laid.runs;
+  return {
+    width: Math.min(widest, Math.ceil(laid.width)),
+    lines: laid.lines,
+    ...first === void 0 ? {} : { wrappedRuns: [first, ...others] }
+  };
 }
 var SHADOW = {
   kind: "shadow",

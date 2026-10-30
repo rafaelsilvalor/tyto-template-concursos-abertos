@@ -11,11 +11,20 @@ import {
   DEFAULT_OPENING,
   NUMBER_DEFAULTS,
   build,
+  hug,
   keepTogether,
   wrapAt,
 } from './template.js';
 
-import type { AssetResolver, Frame, RectNode, SceneNode, TextNode } from '@tyto/core';
+import type {
+  AssetResolver,
+  Frame,
+  RectNode,
+  SceneNode,
+  TextMeasurement,
+  TextNode,
+  TextRun,
+} from '@tyto/core';
 
 /**
  * The carousel's rules, asserted on the scene: which slide the brief's marks make, what each
@@ -230,6 +239,48 @@ describe('the limits of an exam slide', () => {
 
     expect(card(short!).size.w).toBeLessThan(card(long!).size.w);
     expect(card(long!).size.w).toBeLessThanOrEqual(NUMBER_DEFAULTS['card-max-width']);
+  });
+
+  /** A measurement as the app's would give it: `width` the widest laid-out line. */
+  const measured = (width: number, lines: number): TextMeasurement => ({
+    runs: [{ kind: 'text', text: 'Cargos: Professor Assistente', style: {} } as TextRun],
+    lines,
+    width,
+    height: lines * 48,
+    scale: 1,
+    overflow: 0,
+  });
+
+  it('hugs the widest line a wrap leaves, not the box it wrapped in', () => {
+    // UNIFESP: 'Cargos: Professor Assistente Substituto' is 760 px on one line, past the
+    // 652 px the card may hold; wrapped, its widest line is 'Remuneração: até R$ 5.037,78'.
+    const widths: (number | undefined)[] = [];
+    const fit = hug((w) => {
+      widths.push(w);
+      return w === undefined ? measured(760.4, 6) : measured(538.2, 7);
+    }, 652);
+
+    expect(widths).toEqual([undefined, 652]);
+    expect(fit?.width).toBe(539);
+    expect(fit?.lines).toBe(7);
+    expect(fit?.wrappedRuns).toHaveLength(1);
+  });
+
+  it('leaves facts that fit on one line each as they were', () => {
+    const fit = hug((w) => (w === undefined ? measured(420.3, 4) : measured(0, 0)), 652);
+
+    expect(fit).toEqual({ width: 421, lines: 4 });
+  });
+
+  it('puts the same gap on the left and the right of the widest line', async () => {
+    const [exam] = await slides('::lamina\n  SEDUC QX\n  Banca: Ômegas\n  Vagas: 3.000');
+    const box = card(exam!);
+    const facts = nodes(exam!).find((node) => node.name === 'fatos')!;
+    const left = facts.transform.x - box.transform.x;
+    const inner = (facts as TextNode).box!.w! - 1;
+
+    expect(box.size.w - left - inner).toBe(left);
+    expect(left).toBe(NUMBER_DEFAULTS['card-padding']);
   });
 
   const tall = (titleLines: number, factCount: number): string =>
