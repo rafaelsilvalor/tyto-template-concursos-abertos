@@ -141,7 +141,11 @@ export const build: TemplateBuild = (context: TemplateContext) => {
         drawLogo(context.brand, dark ? 60 : 68, oneInk(dark ? ink('accent') : ink('title-ink'))),
       ),
       ...body,
-      signature(context, dark ? ink('accent') : ink('title-ink'), (dark ? 1215 : 1218) - lift),
+      signature(
+        context,
+        dark ? ink('accent') : ink('title-ink'),
+        (dark ? SIGNATURE.baseline : SIGNATURE.examBaseline) - lift,
+      ),
       ...page.seal,
     ],
   });
@@ -584,16 +588,46 @@ function kicker(context: TemplateContext, ink: Ink): NodeDraft {
   });
 }
 
-function signature(context: TemplateContext, color: string, capTop: number): NodeDraft {
+/**
+ * The signature's line, the reference's text layer: its size and tracking, the baselines, and
+ * the paragraph's centre. It is placed by its baseline, not by a cap top: a handle (`@`, lower
+ * case) has no capitals, so the layer's bounds start at whatever glyph is tallest.
+ */
+export const SIGNATURE = {
+  size: 24.4,
+  letterSpacing: 4.9,
+  /** On the cover and the back cover. */
+  baseline: 1232.8,
+  /** On an exam slide. */
+  examBaseline: 1235.8,
+  /**
+   * The paragraph's centre in the reference: the exam layer's, 539.55. The cover's layer says
+   * 539.75, but measured against the reference art 539.55 differs in fewer pixels on all three
+   * slides (126, 864, 126 of 10,323 against 131, 1,072, 131): the letters land on whole pixels.
+   */
+  centre: 539.55,
+} as const;
+
+/**
+ * How far right the centred box moves so the letters centre where the reference's do. The
+ * render adds the tracking after the last letter too and centres that, so the letters sit
+ * half a tracking left (measured: 2 px left on every slide, TYTO-474). When Tyto's export
+ * centres a tracked line without its trailing space, drop the half tracking here.
+ */
+export const SIGNATURE_SHIFT = SIGNATURE.letterSpacing / 2 + (SIGNATURE.centre - SLIDE_WIDTH / 2);
+
+function signature(context: TemplateContext, color: string, baseline: number): NodeDraft {
+  // The box loses twice the shift on its left, so its centre moves by the shift and its right
+  // edge stays on the slide's.
   return textAt('assinatura', signatureOf(context.brand), {
-    x: 0,
-    capTop,
-    size: 24.4,
+    x: 2 * SIGNATURE_SHIFT,
+    capTop: baseline - CAP_HEIGHT * SIGNATURE.size,
+    size: SIGNATURE.size,
     weight: LIGHT,
     color,
-    width: SLIDE_WIDTH,
+    width: SLIDE_WIDTH - 2 * SIGNATURE_SHIFT,
     align: 'center',
-    letterSpacing: 4.9,
+    letterSpacing: SIGNATURE.letterSpacing,
   });
 }
 

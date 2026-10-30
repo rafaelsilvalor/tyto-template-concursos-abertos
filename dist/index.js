@@ -21784,7 +21784,11 @@ var build = (context) => {
         drawLogo(context.brand, dark ? 60 : 68, oneInk(dark ? ink("accent") : ink("title-ink")))
       ),
       ...body,
-      signature(context, dark ? ink("accent") : ink("title-ink"), (dark ? 1215 : 1218) - lift),
+      signature(
+        context,
+        dark ? ink("accent") : ink("title-ink"),
+        (dark ? SIGNATURE2.baseline : SIGNATURE2.examBaseline) - lift
+      ),
       ...page.seal
     ]
   });
@@ -22097,16 +22101,31 @@ function kicker(context, ink) {
     letterSpacing: 27.6
   });
 }
-function signature(context, color2, capTop) {
+var SIGNATURE2 = {
+  size: 24.4,
+  letterSpacing: 4.9,
+  /** On the cover and the back cover. */
+  baseline: 1232.8,
+  /** On an exam slide. */
+  examBaseline: 1235.8,
+  /**
+   * The paragraph's centre in the reference: the exam layer's, 539.55. The cover's layer says
+   * 539.75, but measured against the reference art 539.55 differs in fewer pixels on all three
+   * slides (126, 864, 126 of 10,323 against 131, 1,072, 131): the letters land on whole pixels.
+   */
+  centre: 539.55
+};
+var SIGNATURE_SHIFT = SIGNATURE2.letterSpacing / 2 + (SIGNATURE2.centre - SLIDE_WIDTH / 2);
+function signature(context, color2, baseline) {
   return textAt("assinatura", signatureOf(context.brand), {
-    x: 0,
-    capTop,
-    size: 24.4,
+    x: 2 * SIGNATURE_SHIFT,
+    capTop: baseline - CAP_HEIGHT * SIGNATURE2.size,
+    size: SIGNATURE2.size,
     weight: LIGHT,
     color: color2,
-    width: SLIDE_WIDTH,
+    width: SLIDE_WIDTH - 2 * SIGNATURE_SHIFT,
     align: "center",
-    letterSpacing: 4.9
+    letterSpacing: SIGNATURE2.letterSpacing
   });
 }
 function textAt(name, words, placed) {
