@@ -40,7 +40,9 @@ already installed replaces it.
 A pack brings templates and no formats. Copy `templates/formats.yaml` into the project that
 renders `concursos-abertos`, or merge its `grid` line into the project's own. A brief marks its
 first slide as the cover and its last as the back cover, because one `::lamina` is one slide in
-Tyto and a template cannot add slides of its own:
+Tyto and a template cannot add slides of its own. A brief holds at most 20 `::lamina`, the cover
+and the back cover among them — Instagram's carousel limit — and Tyto refuses a twenty-first with
+`E_BAD_SLOT_VALUE` on it:
 
 ```
 ---

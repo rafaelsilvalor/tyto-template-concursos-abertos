@@ -289,3 +289,38 @@ describe('the seal', () => {
     expect(top(sealedExam!, 'seta')).toBe(1217);
   });
 });
+
+describe('the slide count', () => {
+  /** A carousel of `count` slides: a cover, exams, a back cover. */
+  const carousel = (count: number): string =>
+    [
+      '---\ntemplate: concursos-abertos\nformats: [grid]\n---\n::lamina {capa}',
+      ...Array.from(
+        { length: count - 2 },
+        (_, index) => `::lamina\n  Exam ${index + 1}\n  Vagas: 1`,
+      ),
+      '::lamina {contracapa}',
+    ].join('\n\n');
+
+  it("compiles twenty slides, Instagram's carousel limit, cover and back cover counted", async () => {
+    const result = await compiled(carousel(20));
+
+    expect(result.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
+    expect(result.value.scene.artworks.flatMap((artwork) => artwork.frames)).toHaveLength(20);
+  });
+
+  it('refuses a twenty-first slide, pointing at its `::lamina`', async () => {
+    const brief = carousel(21);
+    const result = await compileTemplate({ brief, template, formats });
+    const errors = result.ok
+      ? result.diagnostics.filter((item) => item.severity === 'error')
+      : result.error;
+
+    expect(errors).toHaveLength(1);
+    const [refusal] = errors;
+    expect(refusal?.code).toBe('E_BAD_SLOT_VALUE');
+    expect(refusal?.message).toContain('allows 20');
+    const twentyFirst = brief.lastIndexOf('::lamina {contracapa}');
+    expect(refusal?.range?.start).toBe(twentyFirst);
+  });
+});

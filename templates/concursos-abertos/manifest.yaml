@@ -1,5 +1,5 @@
 name: concursos-abertos
-version: 0.2.0
+version: 0.2.2
 brand: marinho
 description: The week's open exams as a 1080×1350 carousel — a cover, one slide per exam with its facts on a card, and a back cover that may close with the seal.
 # The plugin measures nothing yet, but every face it sets is declared: CircularXX is licensed,
@@ -29,8 +29,9 @@ slots:
   # One slide each. The cover is `::lamina {capa}` and the back cover `::lamina {contracapa}`,
   # both empty: a template cannot add slides of its own. Every other `::lamina` is an exam: its
   # first line the title, a second line with no `:` the subtitle, and every `Label: value` line
-  # one line of the card. `max` counts slides here, not characters.
-  lamina: { type: rich-text, repeat: true, min: 1, max: 12 }
+  # one line of the card. `max` counts slides here, not characters, the cover and the back cover
+  # among them: 20 is Instagram's carousel limit.
+  lamina: { type: rich-text, repeat: true, min: 1, max: 20 }
 adjustments:
   capa: { type: flag, applies: [lamina] }
   contracapa: { type: flag, applies: [lamina] }
