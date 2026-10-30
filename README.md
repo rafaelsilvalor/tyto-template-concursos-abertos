@@ -99,8 +99,9 @@ between the card's edges and its facts; `card-max-width` (780), the card's wides
 title line; and `title-line-max` (16), the characters a title line holds, spaces counted. Each
 default is the reference art's or the maintainer's, so with nothing configured the carousel
 draws as the reference does. A configuration changes a value, never which pieces are drawn
-(Tyto ADR 0151). A manifest with `values` needs a Tyto whose plugin API is 0.8 or newer, which
-is why `engine` is `>=0.8`.
+(Tyto ADR 0151). A manifest with `values` needs a Tyto whose plugin API is 0.8 or newer.
+`engine` is `>=0.11`, the plugin API of the release whose export centres a tracked line by its
+ink (Tyto 0.12, TYTO-491): the signature and the cover's tracked words rely on it.
 
 ## Development
 

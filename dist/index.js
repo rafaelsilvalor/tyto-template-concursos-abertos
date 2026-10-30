@@ -19721,7 +19721,7 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.31.0/node_modules/@rafaelsilvalor/tyto-core/dist/chunk-EHBBNGVH.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.34.0/node_modules/@rafaelsilvalor/tyto-core/dist/chunk-MM4QDHSJ.js
 var SVG_MARKUP_WAY_OUT = "only flat shapes painted by presentation attributes are inlined: draw it as a contour (a vector of kind 'path'), place it as a PNG, or re-export it from Illustrator with Styling set to Presentation Attributes";
 var diagnosticCodes = {
   // Three syntax codes and not one, because fatality is a property of the code and one
@@ -20019,6 +20019,16 @@ var diagnosticCodes = {
     fatal: false,
     fatality: "It costs the frame the call was for; the frames that did arrive are drawn (ADR 0025)."
   },
+  // The host reads an image's bytes on a frame's behalf, so a frame may only name pictures
+  // the host sent it; a path the plugin wrote itself could be any file on the disk (TYTO-479).
+  E_PLUGIN_TEMPLATE_ASSET: {
+    severity: "error",
+    summary: "An installed code template drew a picture Tyto did not hand it.",
+    template: "Plugin '{plugin}' drew asset '{asset}' in template '{template}', which is not in the template's folder or the brief it was given.",
+    spec: "docs/adr/0062-a-code-template-reads-its-own-folder-through-its-context.md",
+    fatal: false,
+    fatality: "It costs the frame the call was for; the frames that did arrive are drawn (ADR 0025)."
+  },
   // A link is copied as its target when it lands inside the plugin folder; any other is
   // refused before anything is written, rather than failing the copy halfway (TYTO-50). The
   // same check runs again at load, because the permission model follows a link out of the
@@ -20182,6 +20192,14 @@ var diagnosticCodes = {
     spec: "docs/adr/0151-plugin-files-install-and-configure-templates.md",
     fatal: false,
     fatality: "Something loads; it is the project entry rather than the machine one."
+  },
+  W_PLUGIN_FILE_TEMPLATE_SHADOWED: {
+    severity: "warning",
+    summary: "A plugin file configures a template from a plugin, and another source wins that name, so the configurations do not apply.",
+    template: "'{file}' configures template '{template}' from plugin '{plugin}', but the one in '{used}' is used; its configurations and aliases do not apply to it.",
+    spec: "docs/adr/0151-plugin-files-install-and-configure-templates.md",
+    fatal: false,
+    fatality: "The template that won the name renders with its own defaults."
   },
   W_PLUGIN_FILE_REPLACES_INSTALLED: {
     severity: "warning",
@@ -20470,11 +20488,13 @@ var diagnosticCodes = {
   // it, so retrying the same invocation fails the same way every time (TYTO-129).
   E_DELIVERY_FOLDER_BLOCKED: {
     severity: "error",
-    summary: "A delivery needs a folder at a path where a file already is.",
-    template: "'{path}' is a file, and the delivery needs a folder with that name. Rename or move the file, or deliver somewhere else.",
-    spec: "docs/adr/0057-a-delivery-carries-its-brief-and-its-images.md",
+    summary: "An export needs a folder at a path where a file already is.",
+    // Worded for every writer since TYTO-490: the export box, a preset, `--folder` and a
+    // delivery's export all make their folder this way, and only the last is a delivery.
+    template: "'{path}' is a file, and Tyto needs a folder with that name. Rename or move the file, or export somewhere else.",
+    spec: "docs/adr/0157-a-delivery-folder-is-one-key-in-the-project-file.md",
     fatal: true,
-    fatality: "Fatal when the delivery folder or `editaveis/` is held: there is nowhere to write the artwork or `result.json`, so nothing is. When only `assets/` is held, the artwork is already written and the images are not copied beside it."
+    fatality: "Fatal when the folder the artwork or `result.json` goes in is held: there is nowhere to write it, so nothing is."
   },
   // The mirror of the one above, and a code of its own because the fix is the inverse and the
   // catalogue has one sentence per code. "Output" and not "delivery": `result.json` and the
@@ -20547,6 +20567,35 @@ var diagnosticCodes = {
     fatal: false,
     fatality: "Only that alias is missing; the template of that name renders as before."
   },
+  // The brief side of a configuration (TYTO-440) is tolerant per key as its values are: a
+  // default, a format list or a rule the template cannot take costs that one key.
+  W_CONFIGURATION_BRIEF_INVALID: {
+    severity: "warning",
+    summary: "A configuration's brief block sets something the template cannot take.",
+    template: "brief.{key} in configuration '{configuration}' of template '{template}' {problem}; it is ignored.",
+    spec: "docs/plugin-authoring.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
+  // Never looser: the template was drawn for its own limit, so a configuration may only tighten it.
+  W_EDITOR_RULE_LOOSER: {
+    severity: "warning",
+    summary: "A configuration's editor rule allows more than the template's manifest does.",
+    template: "The editor rule on slot '{slot}' in configuration '{configuration}' allows {max}, more than template '{template}' allows ({allowed}); the template's limit stands.",
+    spec: "docs/plugin-authoring.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
+  // A warning where the manifest's own `max` is an error: the template still draws the value,
+  // and the configuration's rule is the house's, not the template's.
+  W_SLOT_OVER_CONFIGURED_LIMIT: {
+    severity: "warning",
+    summary: "A slot runs past the editor rule of the configuration the brief reached.",
+    template: "Slot '{slot}' {measured}, and configuration '{configuration}' of template '{template}' allows {max}.",
+    spec: "docs/plugin-authoring.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
   W_UNUSED_SLOT: {
     severity: "warning",
     summary: "The brief sets a slot the chosen template never renders.",
@@ -20583,6 +20632,33 @@ var diagnosticCodes = {
     summary: "Two plugins contribute a kit for the same brand; the earlier plugin is the one used.",
     template: "The brand kit for '{brand}' from plugin '{shadowed}' is shadowed by the one from '{used}', which was registered first.",
     spec: "docs/adr/0063-a-plugin-contributes-a-brand-kit.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
+  // A warning, never an error: a render with placeholders is the normal public case (ADR 0065).
+  // Said only for a brand a plugin file names, where a typo is the likely reason; a
+  // manifest's brand with no kit stays silent, as every render without the private kit is.
+  W_BRAND_KIT_MISSING: {
+    severity: "warning",
+    summary: "A configuration names a brand that no installed brand kit offers.",
+    template: "No installed brand kit offers '{brand}', which '{alias}' names; it draws the placeholders and the template's own accent.",
+    spec: "docs/adr/0155-a-configuration-picks-its-brand-and-restricts-its-formats.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
+  W_CONFIGURATION_BRAND_INVALID: {
+    severity: "warning",
+    summary: "A configuration's brand is not spelled as a brand id.",
+    template: "The brand of configuration '{configuration}' of template '{template}' must be lower case letters, digits and single hyphens; it is ignored.",
+    spec: "docs/adr/0155-a-configuration-picks-its-brand-and-restricts-its-formats.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
+  W_CONFIGURATION_FORMATS_INVALID: {
+    severity: "warning",
+    summary: "A configuration's formats restriction, or its brief's default formats, names what it cannot.",
+    template: "In configuration '{configuration}' of template '{template}', {problem}.",
+    spec: "docs/adr/0155-a-configuration-picks-its-brand-and-restricts-its-formats.md",
     fatal: false,
     fatality: "A warning never replaces a value (ADR 0013)."
   },
@@ -20895,6 +20971,14 @@ var diagnosticCodes = {
     fatal: false,
     fatality: "A warning never replaces a value (ADR 0013)."
   },
+  W_PROJECT_PLUGIN_FILES_WITHHELD: {
+    severity: "warning",
+    summary: "A restricted folder's plugin files are neither fetched nor loaded until the folder is trusted.",
+    template: "The plugin files in {folder} ({files}) were not fetched or loaded because this folder is not trusted.",
+    spec: "docs/adr/0151-plugin-files-install-and-configure-templates.md",
+    fatal: false,
+    fatality: "Only the project's plugin files are left out; the machine's still load."
+  },
   // ADR 0114: a missing or refused profile costs the profile alone; the folder opens with its own.
   W_PROJECT_PROFILE_INVALID: {
     severity: "warning",
@@ -20928,6 +21012,46 @@ var diagnosticCodes = {
     spec: "docs/adr/0126-an-export-preset-is-a-named-delivery-in-the-project-file.md",
     fatal: false,
     fatality: "A warning never replaces a value (ADR 0013)."
+  },
+  // ADR 0157: a delivery's name is refused, never rewritten, by ADR 0114's profile rule. A
+  // warning as a refused profile name is: it costs the delivery that was asked for and nothing
+  // else, and the command that asked exits 1 because it made nothing.
+  W_DELIVERY_NAME_INVALID: {
+    severity: "warning",
+    summary: "A delivery name cannot be a folder name, so no delivery is made.",
+    template: "The delivery name '{name}' {problem}; no delivery is made.",
+    spec: "docs/adr/0157-a-delivery-folder-is-one-key-in-the-project-file.md",
+    fatal: false,
+    fatality: "Nothing is written, and nothing else is affected: the name is the only thing refused."
+  },
+  E_DELIVERY_BRIEF_EXISTS: {
+    severity: "error",
+    summary: "A new delivery's brief would replace a brief that is already there.",
+    template: "'{path}' already exists, and a delivery's brief is never overwritten; nothing is written.",
+    spec: "docs/adr/0157-a-delivery-folder-is-one-key-in-the-project-file.md",
+    fatal: true,
+    fatality: "The run that refuses changes nothing: not even the folders the delivery lacks are made."
+  },
+  // ADR 0157 §3, after realpath: a link inside the workspace that lands outside. Its own code and
+  // not `W_PROJECT_PATH_OUTSIDE`, whose text is about an untrusted folder's key: a delivery is
+  // confined whether the folder is trusted or not, and this refuses a run, not a key (TYTO-489).
+  E_DELIVERY_PATH_OUTSIDE: {
+    severity: "error",
+    summary: "A new delivery would be made outside the workspace folder, through a link.",
+    template: "'{path}' leads outside the workspace folder, where a delivery must stay; nothing is written.",
+    spec: "docs/adr/0157-a-delivery-folder-is-one-key-in-the-project-file.md",
+    fatal: true,
+    fatality: "Nothing is written: a delivery is part of the project, trusted or not."
+  },
+  // ADR 0157 §6: `tyto render --delivery` on a brief that is in no delivery. The window never
+  // gets here: its button is disabled for such a brief (TYTO-490).
+  E_BRIEF_NOT_IN_DELIVERY: {
+    severity: "error",
+    summary: "A delivery's export was asked of a brief that is in no delivery.",
+    template: "'{path}' is in no delivery: a delivery's brief is kept in its '{folder}' folder, inside a folder in '{parent}'. Make one with tyto delivery new, or export with --out.",
+    spec: "docs/adr/0157-a-delivery-folder-is-one-key-in-the-project-file.md",
+    fatal: true,
+    fatality: "Nothing is rendered: there is no delivery to write into."
   },
   E_TRUST_FILE: {
     severity: "error",
@@ -21272,7 +21396,14 @@ var assetRefSchema = external_exports.strictObject({
   source: external_exports.enum(["file", "url", "inline"]),
   path: external_exports.string().min(1).optional(),
   /** Content hash: same brief plus same assets must produce the same bytes. */
-  hash: external_exports.string().min(1)
+  hash: external_exports.string().min(1),
+  /**
+   * The picture's own width and height in pixels, as the host read them off its header
+   * when it found the file (ADR 0158). A template sizes a frame to it, since it cannot open
+   * the file itself. Absent on a hand-built ref and on a header nothing parsed: an answer
+   * the host guessed would place the picture with confidence, in the wrong frame.
+   */
+  size: sizeSchema.optional()
 });
 var fitSchema = external_exports.enum(["cover", "contain", "fill"]);
 var gradientStopSchema = external_exports.strictObject({
@@ -21409,7 +21540,7 @@ function colorValue(context, name, fallback) {
   return typeof value === "string" ? value : fallback;
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.31.0/node_modules/@rafaelsilvalor/tyto-core/dist/template.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.34.0/node_modules/@rafaelsilvalor/tyto-core/dist/template.js
 function base(options) {
   return {
     transform: { ...identityTransform, ...options.transform },
@@ -21511,7 +21642,7 @@ function frame(options) {
   };
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.2.1/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-YTKBFVV6.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.0/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-YTKBFVV6.js
 var PAPER = "#fbfbfb";
 var INK = "#000000";
 var ZEBRA = "#f2f2f4";
@@ -21548,7 +21679,7 @@ var BODY = {
 };
 var OPTICAL_DROP = 0.15;
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.4.1/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.5.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
 function shifted(draft, dx, dy) {
   const transform2 = {
     ...draft.transform,
@@ -21629,7 +21760,7 @@ function plain(text2) {
   }).join("");
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.2.1/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.0/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-EIGOHDOF.js
 var PLACEHOLDER_LOGO = {
   box: { w: 186.09, h: 376.79 },
   d: (
@@ -21668,6 +21799,8 @@ function drawLogo(kit, height, inks) {
 function signatureOf(kit) {
   return kit.signature ?? PLACEHOLDER_SIGNATURE;
 }
+
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.0/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
 var TITLE_INK = "#7c7c7c";
 var ROW_INK = "#393939";
 var FACE = systemFont("CircularXX");
@@ -22242,15 +22375,14 @@ var SIGNATURE2 = {
    */
   centre: 539.55
 };
-var SIGNATURE_SHIFT = SIGNATURE2.letterSpacing / 2 + (SIGNATURE2.centre - SLIDE_WIDTH / 2);
 function signature(context, color2, baseline) {
   return textAt("assinatura", signatureOf(context.brand), {
-    x: 2 * SIGNATURE_SHIFT,
+    x: 0,
     capTop: baseline - CAP_HEIGHT * SIGNATURE2.size,
     size: SIGNATURE2.size,
     weight: LIGHT,
     color: color2,
-    width: SLIDE_WIDTH - 2 * SIGNATURE_SHIFT,
+    width: 2 * SIGNATURE2.centre,
     align: "center",
     letterSpacing: SIGNATURE2.letterSpacing
   });

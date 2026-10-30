@@ -804,24 +804,16 @@ export const SIGNATURE = {
   centre: 539.55,
 } as const;
 
-/**
- * How far right the centred box moves so the letters centre where the reference's do. The
- * render adds the tracking after the last letter too and centres that, so the letters sit
- * half a tracking left (measured: 2 px left on every slide, TYTO-474). When Tyto's export
- * centres a tracked line without its trailing space, drop the half tracking here.
- */
-export const SIGNATURE_SHIFT = SIGNATURE.letterSpacing / 2 + (SIGNATURE.centre - SLIDE_WIDTH / 2);
-
 function signature(context: TemplateContext, color: string, baseline: number): NodeDraft {
-  // The box loses twice the shift on its left, so its centre moves by the shift and its right
-  // edge stays on the slide's.
+  // The box spans the slide's left edge to twice the reference's centre, so it centres there.
+  // Tyto's export centres a tracked line by its ink (TYTO-491), so no half tracking is added.
   return textAt('assinatura', signatureOf(context.brand), {
-    x: 2 * SIGNATURE_SHIFT,
+    x: 0,
     capTop: baseline - CAP_HEIGHT * SIGNATURE.size,
     size: SIGNATURE.size,
     weight: LIGHT,
     color,
-    width: SLIDE_WIDTH - 2 * SIGNATURE_SHIFT,
+    width: 2 * SIGNATURE.centre,
     align: 'center',
     letterSpacing: SIGNATURE.letterSpacing,
   });
