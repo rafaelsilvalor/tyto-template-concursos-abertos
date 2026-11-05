@@ -19721,7 +19721,7 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.36.1/node_modules/@rafaelsilvalor/tyto-core/dist/chunk-AVQMXBFG.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.39.0/node_modules/@rafaelsilvalor/tyto-core/dist/chunk-WZSLWFYX.js
 var SVG_MARKUP_WAY_OUT = "only flat shapes painted by presentation attributes are inlined: draw it as a contour (a vector of kind 'path'), place it as a PNG, or re-export it from Illustrator with Styling set to Presentation Attributes";
 var diagnosticCodes = {
   // Three syntax codes and not one, because fatality is a property of the code and one
@@ -20610,6 +20610,17 @@ var diagnosticCodes = {
     fatal: false,
     fatality: "A warning never replaces a value (ADR 0013)."
   },
+  // Raised by `compile` while it lays out text, on the host only (ADR 0168): the host lays out
+  // every frame again with every bundled face, a code template's included, so it is the one
+  // place that sees the whole symbol chain and the layout that is drawn.
+  W_GLYPH_MISSING: {
+    severity: "warning",
+    summary: "Text uses characters that neither its font nor the bundled symbol faces can draw.",
+    template: "Text in slot '{slot}' uses {glyphs}, which neither '{font}' nor the bundled symbol faces can draw, in format '{format}'. Another font on this machine may draw them, measured wrong.",
+    spec: "docs/adr/0168-a-glyph-its-face-lacks-is-drawn-in-the-symbol-face.md",
+    fatal: false,
+    fatality: "The artwork is drawn. The characters are measured as the font measures a glyph it lacks, and the browser draws them in whatever face it finds, so the line around them may break or align wrong."
+  },
   // Raised by a template through `context.report` rather than by a stage (ADR 0058). The
   // template names only the code and how far it ran over; `compile` fills in the artwork and
   // the format and points the range at the directive the artwork came from.
@@ -20628,6 +20639,17 @@ var diagnosticCodes = {
     summary: "A paragraph of an artwork ends on a line holding a single word in one format.",
     template: "Artwork '{artwork}' ends a paragraph on the single word '{word}' in format '{format}': no size or letter spacing within the template's limits moved another word down to it.",
     spec: "docs/adr/0167-a-template-spaces-its-blocks-by-weight-and-keeps-orphans-off-its-text.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
+  // Raised by a template the same way (TYTO-502): a file it draws with, a format's background
+  // say, is not in its folder. A warning, as every template report is (ADR 0058): the rest of
+  // the frame is drawn, and the person sees which file to put back.
+  W_TEMPLATE_FILE_MISSING: {
+    severity: "warning",
+    summary: "A file an artwork's template draws with is not in the template's folder in one format.",
+    template: "Artwork '{artwork}' is drawn without '{path}' in format '{format}': template '{template}' has no such file in its folder.",
+    spec: "docs/adr/0058-a-template-reports-warnings-beside-its-frame.md",
     fatal: false,
     fatality: "A warning never replaces a value (ADR 0013)."
   },
@@ -21648,7 +21670,7 @@ function colorValue(context, name, fallback) {
   return typeof value === "string" ? value : fallback;
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.36.1/node_modules/@rafaelsilvalor/tyto-core/dist/template.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.39.0/node_modules/@rafaelsilvalor/tyto-core/dist/template.js
 function base(options) {
   return {
     transform: { ...identityTransform, ...options.transform },
@@ -21750,7 +21772,7 @@ function frame(options) {
   };
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-YTKBFVV6.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.5.2/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-YTKBFVV6.js
 var PAPER = "#fbfbfb";
 var INK = "#000000";
 var ZEBRA = "#f2f2f4";
@@ -21787,7 +21809,7 @@ var BODY = {
 };
 var OPTICAL_DROP = 0.15;
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.9.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.11.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
 function shifted(draft, dx, dy) {
   const transform2 = {
     ...draft.transform,
@@ -21814,6 +21836,43 @@ function at(x, y, item) {
   return shifted(item.draft, x, y);
 }
 var NUMBER = String.raw`\d[\d.,]*`;
+var UNITS = [
+  "s",
+  "ms",
+  "min",
+  "h",
+  "m",
+  "km",
+  "cm",
+  "mm",
+  "kg",
+  "g",
+  "mg",
+  "N",
+  "kN",
+  "J",
+  "kJ",
+  "W",
+  "kW",
+  "kWh",
+  "V",
+  "mV",
+  "A",
+  "mA",
+  "Hz",
+  "kHz",
+  "MHz",
+  "Pa",
+  "kPa",
+  "MPa",
+  "K",
+  "\xB0C",
+  "L",
+  "mL",
+  "rad",
+  "mol",
+  "\u03A9"
+];
 var KEEP_TOGETHER_RULES = [
   { name: "currency sign + amount", before: String.raw`(?:R\$|US\$|€)`, after: String.raw`\d` },
   {
@@ -21821,7 +21880,12 @@ var KEEP_TOGETHER_RULES = [
     before: NUMBER,
     after: String.raw`(?:mil|milhão|milhões|bi|bilhão|bilhões)(?!\p{L})`
   },
-  { name: "number + percent", before: NUMBER, after: "%" }
+  { name: "number + percent", before: NUMBER, after: "%" },
+  {
+    name: "number + unit",
+    before: String.raw`[\d⁰¹²³⁴⁵⁶⁷⁸⁹]`,
+    after: String.raw`(?:${UNITS.join("|")})(?!\p{L})`
+  }
 ];
 var LABEL_EXCEPTIONS = [
   { name: "a time", pattern: String.raw`\d{1,2}:\d{2}` },
@@ -21882,7 +21946,7 @@ function plain(text2) {
   }).join("");
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-EIGOHDOF.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.5.2/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-EIGOHDOF.js
 var PLACEHOLDER_LOGO = {
   box: { w: 186.09, h: 376.79 },
   d: (
@@ -21922,7 +21986,7 @@ function signatureOf(kit) {
   return kit.signature ?? PLACEHOLDER_SIGNATURE;
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.5.2/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
 var TITLE_INK = "#7c7c7c";
 var ROW_INK = "#393939";
 var FACE = systemFont("CircularXX");
