@@ -21835,6 +21835,7 @@ function block(width, height, draft) {
 function at(x, y, item) {
   return shifted(item.draft, x, y);
 }
+var NO_BREAK_SPACE = "\xA0";
 var NUMBER = String.raw`\d[\d.,]*`;
 var UNITS = [
   "s",
@@ -21887,10 +21888,48 @@ var KEEP_TOGETHER_RULES = [
     after: String.raw`(?:${UNITS.join("|")})(?!\p{L})`
   }
 ];
+function keepTogetherText(text2, rules = KEEP_TOGETHER_RULES) {
+  return rules.reduce(
+    (glued, rule) => glued.replace(
+      new RegExp(`(?<=${rule.before})( +)(?=${rule.after})`, "gu"),
+      (spaces) => NO_BREAK_SPACE.repeat(spaces.length)
+    ),
+    text2
+  );
+}
+var LONGEST_LABEL = 40;
 var LABEL_EXCEPTIONS = [
   { name: "a time", pattern: String.raw`\d{1,2}:\d{2}` },
   { name: "a URL", pattern: String.raw`\p{L}[\p{L}\d+.-]*://\S*` }
 ];
+function separatorAt(line, options) {
+  const separator = options.separator ?? ":";
+  if (separator === "") return void 0;
+  const covered = (options.notLabels ?? LABEL_EXCEPTIONS).flatMap(
+    (exception) => [...line.matchAll(new RegExp(exception.pattern, "gu"))].map((match) => ({
+      start: match.index,
+      end: match.index + match[0].length
+    }))
+  );
+  let at2 = line.indexOf(separator);
+  while (at2 >= 0 && covered.some((span) => span.start <= at2 && at2 < span.end)) {
+    at2 = line.indexOf(separator, at2 + 1);
+  }
+  if (at2 < 0) return void 0;
+  const label = line.slice(0, at2);
+  if (label.includes("\n") || label.trim() === "") return void 0;
+  if ([...label.trim()].length > (options.longestLabel ?? LONGEST_LABEL)) return void 0;
+  return at2;
+}
+function labelOfText(line, options = {}) {
+  const at2 = separatorAt(line, options);
+  if (at2 === void 0) return { label: void 0, text: line };
+  const end = at2 + (options.separator ?? ":").length;
+  return {
+    label: line.slice(0, options.keepSeparator === false ? at2 : end),
+    text: line.slice(end)
+  };
+}
 function mark(shape, height, fill2, name) {
   const scale = height / shape.box.h;
   return block(
@@ -22232,9 +22271,9 @@ function exam(context, ink, footerTop) {
   const all = value?.kind === "rich-text" ? lines(value.text).map((line) => plain(line).trim()) : [];
   const written = all.filter((line) => line !== "");
   const [title = "", ...rest] = written;
-  const subtitle = rest[0] !== void 0 && !rest[0].includes(":") ? rest.shift() : void 0;
+  const subtitle = rest[0] !== void 0 && labelOfText(rest[0]).label === void 0 ? rest.shift() : void 0;
   const titleLines = wrapAt(
-    title.toUpperCase(),
+    keepTogetherText(title).toUpperCase(),
     numberValue(context, "title-line-max", NUMBER_DEFAULTS["title-line-max"])
   );
   const block2 = (titleTop2) => examBlock(context, ink, titleLines, subtitle, rest, titleTop2);
@@ -22300,9 +22339,9 @@ var EXAM = {
 };
 function card(context, ink, facts, top) {
   const runs = facts.flatMap((line, index) => {
-    const split = line.indexOf(":");
-    const label = split < 0 ? line : line.slice(0, split + 1);
-    const detail = split < 0 ? "" : line.slice(split + 1);
+    const fact = labelOfText(keepTogetherText(line));
+    const label = fact.label ?? fact.text;
+    const detail = fact.label === void 0 ? "" : fact.text;
     return [
       ...index > 0 ? [lineBreak()] : [],
       run(label, { font: FACE2, size: EXAM.factSize, weight: MEDIUM, color: ink("label-ink") }),
@@ -22404,12 +22443,11 @@ var CONNECTORS = /* @__PURE__ */ new Set([
   "nos",
   "com",
   "para",
-  "por",
-  "r$"
+  "por"
 ]);
 var isConnector = (word) => [...word].length === 1 || CONNECTORS.has(word.toLowerCase());
-var NO_BREAK = "\xA0";
 var isDash = (word) => /^[-–—]$/.test(word);
+var wordsOf = (text2) => text2.split(/[^\S\u00a0]+/).filter((piece) => piece !== "");
 function unbreakable(words) {
   const pieces = [];
   let pending = [];
@@ -22434,14 +22472,12 @@ function unbreakable(words) {
 }
 function keepTogether(text2) {
   const leading = /^\s/.test(text2) ? " " : "";
-  const words = text2.split(/\s+/).filter((piece) => piece !== "");
-  return leading + unbreakable(words).map((piece) => piece.join(NO_BREAK)).join(" ");
+  const words = wordsOf(text2);
+  return leading + unbreakable(words).map((piece) => piece.join(NO_BREAK_SPACE)).join(" ");
 }
 var MOST_PIECES_TO_BALANCE = 16;
 function wrapAt(words, limit) {
-  const pieces = unbreakable(words.split(/\s+/).filter((piece) => piece !== "")).map(
-    (piece) => piece.join(" ")
-  );
+  const pieces = unbreakable(wordsOf(words)).map((piece) => piece.join(" "));
   if (pieces.length === 0) return [""];
   const greedy = fill(pieces, limit);
   if (pieces.length > MOST_PIECES_TO_BALANCE) return greedy;

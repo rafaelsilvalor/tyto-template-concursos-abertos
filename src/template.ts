@@ -34,7 +34,16 @@ import {
   vector,
 } from '@tyto/core/template';
 import { drawLogo, oneInk, sealOf, signatureOf } from '@tyto/house-style';
-import { at, lines, plain, reportOverflow, sealed } from '@tyto/template-kit';
+import {
+  at,
+  keepTogetherText,
+  labelOfText,
+  lines,
+  NO_BREAK_SPACE,
+  plain,
+  reportOverflow,
+  sealed,
+} from '@tyto/template-kit';
 
 import type { TemplateBuild, TemplateContext, TextMeasurement } from '@tyto/core';
 import type { NodeDraft } from '@tyto/core/template';
@@ -343,9 +352,10 @@ function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[
     value?.kind === 'rich-text' ? lines(value.text).map((line) => plain(line).trim()) : [];
   const written = all.filter((line) => line !== '');
   const [title = '', ...rest] = written;
-  const subtitle = rest[0] !== undefined && !rest[0].includes(':') ? rest.shift() : undefined;
+  const subtitle =
+    rest[0] !== undefined && labelOfText(rest[0]).label === undefined ? rest.shift() : undefined;
   const titleLines = wrapAt(
-    title.toUpperCase(),
+    keepTogetherText(title).toUpperCase(),
     numberValue(context, 'title-line-max', NUMBER_DEFAULTS['title-line-max']),
   );
   const block = (titleTop: number) => examBlock(context, ink, titleLines, subtitle, rest, titleTop);
@@ -438,9 +448,11 @@ function card(
   top: number,
 ): { readonly nodes: NodeDraft[]; readonly foot: number } | undefined {
   const runs = facts.flatMap((line, index) => {
-    const split = line.indexOf(':');
-    const label = split < 0 ? line : line.slice(0, split + 1);
-    const detail = split < 0 ? '' : line.slice(split + 1);
+    // The kit glues a currency sign to its amount (TYTO-593) and finds the label at the first
+    // colon (TYTO-594); a line without a label is drawn whole in the label's ink.
+    const fact = labelOfText(keepTogetherText(line));
+    const label = fact.label ?? fact.text;
+    const detail = fact.label === undefined ? '' : fact.text;
     return [
       ...(index > 0 ? [lineBreak()] : []),
       run(label, { font: FACE, size: EXAM.factSize, weight: MEDIUM, color: ink('label-ink') }),
@@ -583,17 +595,21 @@ const CONNECTORS = new Set([
   'com',
   'para',
   'por',
-  'r$',
 ]);
 
 const isConnector = (word: string): boolean =>
   [...word].length === 1 || CONNECTORS.has(word.toLowerCase());
 
-/** The space a renderer never breaks a line at. */
-const NO_BREAK = '\u00a0';
-
 /** A dash standing between spaces: it stays at the end of the word before it. */
 const isDash = (word: string): boolean => /^[-–—]$/.test(word);
+
+/**
+ * Words split at the spaces a line may break at. A no-break space is not one: the kit's
+ * `keepTogetherText` wrote it between a currency sign and its amount (TYTO-593), and the
+ * two halves stay one word.
+ */
+const wordsOf = (text: string): string[] =>
+  text.split(/[^\S\u00a0]+/).filter((piece) => piece !== '');
 
 /**
  * The words in the pieces a line may break between: a connector (or a lone character) travels
@@ -628,11 +644,11 @@ function unbreakable(words: readonly string[]): string[][] {
  */
 export function keepTogether(text: string): string {
   const leading = /^\s/.test(text) ? ' ' : '';
-  const words = text.split(/\s+/).filter((piece) => piece !== '');
+  const words = wordsOf(text);
   return (
     leading +
     unbreakable(words)
-      .map((piece) => piece.join(NO_BREAK))
+      .map((piece) => piece.join(NO_BREAK_SPACE))
       .join(' ')
   );
 }
@@ -647,9 +663,7 @@ const MOST_PIECES_TO_BALANCE = 16;
  * with a dash. A word longer than the limit stands on a line of its own rather than being cut.
  */
 export function wrapAt(words: string, limit: number): string[] {
-  const pieces = unbreakable(words.split(/\s+/).filter((piece) => piece !== '')).map((piece) =>
-    piece.join(' '),
-  );
+  const pieces = unbreakable(wordsOf(words)).map((piece) => piece.join(' '));
   if (pieces.length === 0) return [''];
   const greedy = fill(pieces, limit);
   if (pieces.length > MOST_PIECES_TO_BALANCE) return greedy;

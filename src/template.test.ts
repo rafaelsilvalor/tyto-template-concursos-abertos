@@ -210,7 +210,8 @@ describe('the limits of an exam slide', () => {
     expect(keepTogether(' Fundamental, Médio e Superior')).toBe(
       ' Fundamental, Médio e\u00a0Superior',
     );
-    expect(keepTogether(' até R$ 4.318,00 - mais auxílio')).toBe(
+    // The kit's no-break space between `R$` and its amount (TYTO-593) is not a word's edge.
+    expect(keepTogether(' até R$\u00a04.318,00 - mais auxílio')).toBe(
       ' até R$\u00a04.318,00\u00a0- mais auxílio',
     );
   });
@@ -219,6 +220,52 @@ describe('the limits of an exam slide', () => {
     const [exam] = await slides('::lamina\n  SEDUC QX\n  Nível: Fundamental, Médio e Superior');
 
     expect(named(exam!, 'fatos')).toBe('Nível: Fundamental, Médio e\u00a0Superior');
+  });
+
+  it('keeps `R$` with its amount where the line would otherwise end on it (TYTO-593)', async () => {
+    // Every glyph 20 px wide at the card's 40 px: the card's 652 px hold 32 characters, so
+    // "Salário: R$ 5.617,92 a R$" (25) fits and its amount does not.
+    const monospace = { advance: (text: string) => [...text].length * 0.5, contentHeight: 1.2 };
+    const result = await compileTemplate({
+      brief: [
+        '---',
+        'template: concursos-abertos',
+        'formats: [grid]',
+        '---',
+        '::lamina',
+        '  PM PE',
+        '  Salário: R$ 5.617,92 a R$ 12.937,33',
+      ].join('\n'),
+      template,
+      formats,
+      faces: { get: () => monospace },
+    });
+    if (!result.ok) throw new Error(result.error.map((item) => item.message).join('\n'));
+    const [exam] = result.value.scene.artworks.flatMap((artwork) => artwork.frames);
+    const lines = named(exam!, 'fatos')!.split('\n');
+
+    expect(lines.some((line) => line.trimEnd().endsWith('R$'))).toBe(false);
+    expect(lines.map((line) => line.trim())).toEqual([
+      'Salário: R$\u00a05.617,92',
+      'a\u00a0R$\u00a012.937,33',
+    ]);
+  });
+
+  it('splits a fact into label and text at its first colon (TYTO-594)', async () => {
+    const [exam] = await slides(
+      '::lamina\n  SEDUC QX\n  Edital: retificado: novas datas\n  Prova às 14:00 em Recife',
+    );
+    const facts = texts(exam!).find((node) => node.name === 'fatos')!;
+    const written = facts.runs.flatMap((part) =>
+      part.kind === 'text' ? [[part.text, part.weight]] : [],
+    );
+
+    expect(written).toEqual([
+      ['Edital:', 500],
+      [' retificado: novas datas', 300],
+      // A time's colon is not a label's end: the line has no label and is drawn whole.
+      ['Prova às 14:00 em Recife', 500],
+    ]);
   });
 
   it('keeps a word longer than the limit whole, on a line of its own', () => {

@@ -61,10 +61,15 @@ formats: [grid]
 ::lamina {contracapa}
 ```
 
-An exam's first line is its title, a second line with no `:` its subtitle, and every
-`Label: value` line one line of the card. The title breaks between words into lines of at
+An exam's first line is its title, a second line with no label its subtitle, and every
+other line one line of the card. A line's label is what comes before its first `:`, found by
+the template kit's `labelOfText` (Tyto TYTO-594), as in every house template: the colon of a
+time (`14:00`) or of a URL does not end one, so `Prova às 14:00` has no label and is drawn
+whole in the label's ink. The kit's `keepTogetherText` (TYTO-593) keeps a currency sign with
+its amount (`R$ 5.617,92`), an amount with its scale word (`9,8 mil`), a number with its
+`%` and with its unit. The title breaks between words into lines of at
 most 16 characters, as few lines as that allows, balanced so no short word stands alone
-under a full line; a line never ends on a connector (`de`, `do`, `e`, `R$`, any one-letter
+under a full line; a line never ends on a connector (`de`, `do`, `e`, any one-letter
 word) nor starts with a dash, which stays with the word before it. The card hugs its widest
 fact and wraps a longer one at 780 px, growing taller, under the same rule: no connector or
 lone character at a line's end. A wrapped card then shrinks to the widest line the wrap left,
