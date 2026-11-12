@@ -22365,6 +22365,7 @@ function card(context, ink, facts, top) {
     runs: written,
     box,
     lineHeight: EXAM.factLineHeight,
+    overflow: "grow",
     transform: at2
   });
   const fit = hug((w) => context.measure(draft(w === void 0 ? {} : { w })), widest);
@@ -22620,6 +22621,9 @@ function textAt(name, words, placed) {
     align: placed.align ?? "left",
     lineHeight,
     letterSpacing: placed.letterSpacing ?? 0,
+    // Never cut at the box: at a line height of 1 an accented capital on the first line
+    // (the Á of MONGAGUÁ) rises above the line's box, and a clipped box drops the accent.
+    overflow: "grow",
     transform: { x: placed.x, y: placed.capTop - capOffset(placed.size, lineHeight) }
   });
 }
