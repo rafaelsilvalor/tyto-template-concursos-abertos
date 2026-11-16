@@ -22098,6 +22098,17 @@ var COLOR_DEFAULTS = {
   "label-ink": "#00578e",
   "value-ink": "#646464"
 };
+var SAUDE_COLOR_DEFAULTS = {
+  deep: "#00eff6",
+  shallow: "#00a4e9",
+  accent: "#ffffff",
+  paper: "#ffffff",
+  card: "#fafafa",
+  "title-ink": "#1e9fdc",
+  "subtitle-ink": "#4d4d4d",
+  "label-ink": "#00a0df",
+  "value-ink": "#646464"
+};
 var NUMBER_DEFAULTS = {
   /** An exam's title breaks between words into lines of at most this many characters. */
   "title-line-max": 16,
@@ -22123,8 +22134,10 @@ function capOffset(size, lineHeight) {
 }
 var SLIDE_WIDTH = 1080;
 var MARGIN = 80;
-var build = (context) => {
-  const ink = (name) => colorValue(context, name, COLOR_DEFAULTS[name]);
+var build = (context) => buildIn(COLOR_DEFAULTS, context);
+var buildSaude = (context) => buildIn(SAUDE_COLOR_DEFAULTS, context);
+function buildIn(defaults, context) {
+  const ink = (name) => colorValue(context, name, defaults[name]);
   const page = sealed(context.size, sealOf(context));
   const lift = context.size.h - page.size.h;
   const role = roleOf(context);
@@ -22150,7 +22163,7 @@ var build = (context) => {
       ...page.seal
     ]
   });
-};
+}
 function roleOf(context) {
   if (context.adjustments["capa"] === true) return "capa";
   if (context.adjustments["contracapa"] === true) return "contracapa";
@@ -22635,7 +22648,10 @@ function slotText(context, name, fallback) {
 }
 
 // src/index.ts
-var BUILDS = { "concursos-abertos": build };
+var BUILDS = {
+  "concursos-abertos": build,
+  "concursos-abertos-saude": buildSaude
+};
 function activate(host) {
   host.registerTemplatePack({
     id: "concursos-abertos",
