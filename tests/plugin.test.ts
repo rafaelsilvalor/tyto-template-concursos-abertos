@@ -68,6 +68,16 @@ describe('the plugin', () => {
     expect(answer.value.frame.children.length).toBeGreaterThan(0);
   });
 
+  it('draws the health cover from the bundle in its own gradient', async () => {
+    const answer = await build()('concursos-abertos-saude', call, [], NO_SHIPPED_FILES);
+    if (!answer.ok) throw new Error(answer.error.map((item) => item.message).join('\n'));
+
+    const education = await build()('concursos-abertos', call, [], NO_SHIPPED_FILES);
+    if (!education.ok) throw new Error(education.error.map((item) => item.message).join('\n'));
+
+    expect(answer.value.frame.background).not.toEqual(education.value.frame.background);
+  });
+
   it('refuses a template name it does not draw', async () => {
     const answer = await build()('tabela', call, [], NO_SHIPPED_FILES);
 

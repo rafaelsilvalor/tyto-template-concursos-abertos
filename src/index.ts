@@ -1,18 +1,21 @@
 /**
- * The plugin's entry: one template pack whose only template, `concursos-abertos`, is a code
- * template.
+ * The plugin's entry: one template pack of two code templates: `concursos-abertos` (education)
+ * and `concursos-abertos-saude` (health), the same slides in two verticals' colours.
  *
  * Tyto reads the manifests from `templates/` itself (Tyto ADR 0046), so the pack lists none.
  * The folder holds no `template.ts`: the code is this bundle's, and Tyto calls `build` in the
  * plugin's own process by the template's manifest name (Tyto ADR 0048).
  */
 
-import { build as buildOpenExams } from './template.js';
+import { build as buildOpenExams, buildSaude } from './template.js';
 
 import type { TemplateContext } from '@tyto/core';
 import type { PluginHost } from '@tyto/plugin-api';
 
-const BUILDS = { 'concursos-abertos': buildOpenExams } as const;
+const BUILDS = {
+  'concursos-abertos': buildOpenExams,
+  'concursos-abertos-saude': buildSaude,
+} as const;
 
 export function activate(host: PluginHost): void {
   host.registerTemplatePack({

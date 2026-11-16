@@ -2,11 +2,13 @@
 
 `concursos-abertos`, a [Tyto](https://github.com/rafaelsilvalor/tyto) code template in its own
 repository: the week's open exams as a 1080×1350 carousel — a cover, one slide per exam with its
-facts on a card, and a back cover that may close with the house's seal.
+facts on a card, and a back cover that may close with the house's seal. A second template,
+`concursos-abertos-saude`, draws the same slides for the health vertical: only the colour
+defaults and the brand (`azul`) differ.
 
 **This repository holds the composition only.** The logo and the signature are not here: Tyto
 hands them to the template from the brand kit installed on the machine, under the manifest's
-brand `marinho`, and without one it draws placeholders (Tyto ADR 0063, ADR 0065). The default
+brand (`marinho`, or `azul` for the health template), and without one it draws placeholders (Tyto ADR 0063, ADR 0065). The default
 words on the back cover and the example brief are invented copy.
 
 ## Install into Tyto

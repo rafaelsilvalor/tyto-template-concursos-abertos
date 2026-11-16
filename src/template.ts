@@ -80,6 +80,24 @@ export const COLOR_DEFAULTS = {
 
 type ColorName = keyof typeof COLOR_DEFAULTS;
 
+/**
+ * `concursos-abertos-saude`'s colours: the same slides in the health vertical's reference
+ * (`concursos-abertos-saude.psd`), which changes only the colours and the brand's signature.
+ * The gradient is the composited background's top and foot rows; the inks are the type layers'
+ * fills. The reference shows no subtitle, so the subtitle keeps the education one.
+ */
+export const SAUDE_COLOR_DEFAULTS: Readonly<Record<ColorName, string>> = {
+  deep: '#00eff6',
+  shallow: '#00a4e9',
+  accent: '#ffffff',
+  paper: '#ffffff',
+  card: '#fafafa',
+  'title-ink': '#1e9fdc',
+  'subtitle-ink': '#4d4d4d',
+  'label-ink': '#00a0df',
+  'value-ink': '#646464',
+};
+
 /** The numbers a configuration may change, by declared value name, each default the reference's. */
 export const NUMBER_DEFAULTS = {
   /** An exam's title breaks between words into lines of at most this many characters. */
@@ -120,8 +138,14 @@ const MARGIN = 80;
 
 /* -------------------------------------------------------------------------- the build -- */
 
-export const build: TemplateBuild = (context: TemplateContext) => {
-  const ink = (name: ColorName) => colorValue(context, name, COLOR_DEFAULTS[name]);
+export const build: TemplateBuild = (context: TemplateContext) => buildIn(COLOR_DEFAULTS, context);
+
+/** `concursos-abertos-saude`: the same slides, falling back to the health vertical's colours. */
+export const buildSaude: TemplateBuild = (context: TemplateContext) =>
+  buildIn(SAUDE_COLOR_DEFAULTS, context);
+
+function buildIn(defaults: Readonly<Record<ColorName, string>>, context: TemplateContext) {
+  const ink = (name: ColorName) => colorValue(context, name, defaults[name]);
   const page = sealed(context.size, sealOf(context));
   // The seal's band, glued to the last slide's foot: the signature and an exam's arrow rise by
   // it and keep their distance to the page's foot (the maintainer, 2026-10-29, TYTO-469).
@@ -158,7 +182,7 @@ export const build: TemplateBuild = (context: TemplateContext) => {
       ...page.seal,
     ],
   });
-};
+}
 
 type Ink = (name: ColorName) => string;
 
