@@ -37,8 +37,8 @@ adjustments:
   contracapa: { type: flag, applies: [lamina] }
 # The same slides as `concursos-abertos`, from `concursos-abertos-saude.psd`: only the colours
 # and the brand (azul, whose signature is the health vertical's) differ.
-# What a configuration may change (Tyto ADR 0153): the colours, the card's padding and the
-# title's line length. Each default is the reference art's or the maintainer's, and
+# What a configuration may change (Tyto ADR 0153): the colours, the highlights, the card's
+# padding and the title's line length. Each default is the reference art's or the maintainer's, and
 # `tests/values.test.ts` pins them equal to the ones the code falls back to.
 values:
   # From the card's edges to its facts, on every side.
@@ -63,3 +63,12 @@ values:
   subtitle-ink: { type: color, default: '#4d4d4d' }
   label-ink: { type: color, default: '#00a0df' }
   value-ink: { type: color, default: '#646464' }
+  # The highlight: `**…**` in an exam's title, its subtitle and its card's values, Bold in the
+  # card and the heading's own weight above it. Set it in the brief's frontmatter:
+  # `destaque: '#e30613'`. Its default is the label's colour.
+  destaque: { type: color, default: '#00a0df' }
+  # A second and a third highlight, reached only by a colour mark in an exam's title or
+  # subtitle: `{cor:destaque-2}Professor{/}`. Their default is `destaque`'s, so set the one
+  # you mark.
+  destaque-2: { type: color, default: '#00a0df' }
+  destaque-3: { type: color, default: '#00a0df' }

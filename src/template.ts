@@ -26,27 +26,47 @@ import {
   frame,
   lineBreak,
   linearGradient,
-  rect,
-  run,
+  runsOf,
   solid,
   stop,
-  text,
-  vector,
 } from '@tyto/core/template';
 import { drawLogo, oneInk, sealOf, signatureOf } from '@tyto/house-style';
 import {
+  anchorOf,
+  arrowShape,
   at,
+  atLeastOne,
+  capsulePath,
+  carouselFooter,
+  capText,
+  circlePath,
+  cornerBracket,
+  highlights,
+  huggedText,
+  icon,
+  inset,
   keepTogetherText,
   labelOfText,
-  lines,
+  labelValueRuns,
   NO_BREAK_SPACE,
+  paddedCard,
   plain,
+  plainRuns,
   reportOverflow,
+  roleOf,
+  roundedRectPath,
+  rule,
   sealed,
+  shape,
+  signatureLine,
+  slideRichLines,
+  slotText,
+  stackIn,
 } from '@tyto/template-kit';
 
-import type { TemplateBuild, TemplateContext, TextMeasurement } from '@tyto/core';
+import type { RichText, TemplateBuild, TemplateContext, TextRun, TextSpan } from '@tyto/core';
 import type { NodeDraft } from '@tyto/core/template';
+import type { Area, Block, Highlights, Icon } from '@tyto/template-kit';
 
 /* ------------------------------------------------------------------------- the words -- */
 
@@ -76,6 +96,19 @@ export const COLOR_DEFAULTS = {
   'subtitle-ink': '#4d4d4d',
   'label-ink': '#00578e',
   'value-ink': '#646464',
+  /**
+   * The highlights, named in the brief writer's language because a brief's frontmatter sets them
+   * (Tyto ADR 0226): `destaque: '#e30613'`. `**…**` takes `destaque`, in an exam's title, its
+   * subtitle and its card's values. Its default is the label's colour.
+   */
+  destaque: '#00578e',
+  /**
+   * A second and a third highlight, reached only by a colour mark in the title or the subtitle,
+   * `{cor:destaque-2}…{/}`. A declared colour needs a constant default, so theirs is `destaque`'s,
+   * and a brief that marks them sets them.
+   */
+  'destaque-2': '#00578e',
+  'destaque-3': '#00578e',
 } as const;
 
 type ColorName = keyof typeof COLOR_DEFAULTS;
@@ -96,6 +129,9 @@ export const SAUDE_COLOR_DEFAULTS: Readonly<Record<ColorName, string>> = {
   'subtitle-ink': '#4d4d4d',
   'label-ink': '#00a0df',
   'value-ink': '#646464',
+  destaque: '#00a0df',
+  'destaque-2': '#00a0df',
+  'destaque-3': '#00a0df',
 };
 
 /** The numbers a configuration may change, by declared value name, each default the reference's. */
@@ -119,21 +155,15 @@ const BOLD = 700;
 const BLACK = 900;
 
 /**
- * CircularXX's vertical metrics, in em: the ascender and the capital height. A line of
- * height `lineHeight` puts the content area in its middle, so the capitals start this far
- * below the line's top. The face's typographic metrics (`OS/2`), the same in every weight:
- * the render lays lines out by these, measured against the reference art — the `hhea` pair
- * (0.953, 0.277) put every title 2 to 15 px high.
+ * CircularXX's capital height, in em. Its vertical metrics are the kit's `DEFAULT_METRICS`
+ * (ascent 0.75, descent 0.25, this cap height): the face's typographic metrics (`OS/2`), the
+ * same in every weight. The render lays lines out by these, measured against the reference
+ * art — the `hhea` pair (0.953, 0.277) put every title 2 to 15 px high.
  */
-const ASCENT = 0.75;
-const DESCENT = 0.25;
 const CAP_HEIGHT = 0.709;
 
-function capOffset(size: number, lineHeight: number): number {
-  return size * ((lineHeight - (ASCENT + DESCENT)) / 2 + (ASCENT - CAP_HEIGHT));
-}
-
 const SLIDE_WIDTH = 1080;
+const SLIDE_HEIGHT = 1350;
 const MARGIN = 80;
 
 /* -------------------------------------------------------------------------- the build -- */
@@ -146,20 +176,21 @@ export const buildSaude: TemplateBuild = (context: TemplateContext) =>
 
 function buildIn(defaults: Readonly<Record<ColorName, string>>, context: TemplateContext) {
   const ink = (name: ColorName) => colorValue(context, name, defaults[name]);
+  // The seal's band, glued to the last slide's foot, leaves a shorter page: the footer stands on
+  // that page's foot, so the signature and an exam's arrow rise by the band and keep their
+  // distance to the page's foot (the maintainer, 2026-10-29, TYTO-469).
   const page = sealed(context.size, sealOf(context));
-  // The seal's band, glued to the last slide's foot: the signature and an exam's arrow rise by
-  // it and keep their distance to the page's foot (the maintainer, 2026-10-29, TYTO-469).
-  const lift = context.size.h - page.size.h;
+  const area = { width: page.size.w, height: page.size.h };
 
-  const role = roleOf(context);
+  const { role } = roleOf(context, ROLES);
+  const dark = role !== 'lamina';
   const body =
     role === 'capa'
       ? cover(context, ink)
       : role === 'contracapa'
         ? backCover(context, ink)
-        : exam(context, ink, EXAM.footerTop - lift);
+        : exam(context, ink, area.height - FOOTER.arrowFromFoot - FOOTER.arrow.h);
 
-  const dark = role !== 'lamina';
   return frame({
     format: context.format,
     size: context.size,
@@ -174,11 +205,7 @@ function buildIn(defaults: Readonly<Record<ColorName, string>>, context: Templat
         drawLogo(context.brand, dark ? 60 : 68, oneInk(dark ? ink('accent') : ink('title-ink'))),
       ),
       ...body,
-      signature(
-        context,
-        dark ? ink('accent') : ink('title-ink'),
-        (dark ? SIGNATURE.baseline : SIGNATURE.examBaseline) - lift,
-      ),
+      footer(context, area, dark ? ink('accent') : ink('title-ink'), dark),
       ...page.seal,
     ],
   });
@@ -186,12 +213,11 @@ function buildIn(defaults: Readonly<Record<ColorName, string>>, context: Templat
 
 type Ink = (name: ColorName) => string;
 
-/** Which of the three slides this `::lamina` is: the brief marks the cover and the back cover. */
-export function roleOf(context: TemplateContext): 'capa' | 'contracapa' | 'lamina' {
-  if (context.adjustments['capa'] === true) return 'capa';
-  if (context.adjustments['contracapa'] === true) return 'contracapa';
-  return 'lamina';
-}
+/**
+ * Which of the three slides a `::lamina` is, read by the kit (TYTO-552): the brief marks the cover
+ * and the back cover, an unmarked slide is an exam, and a slide marked both is the cover.
+ */
+const ROLES = { roles: ['capa', 'contracapa'], default: 'lamina' } as const;
 
 /* -------------------------------------------------------------------------- the cover -- */
 
@@ -199,29 +225,24 @@ function cover(context: TemplateContext, ink: Ink): NodeDraft[] {
   const [first = '', second = ''] = slotText(context, 'abertura', DEFAULT_OPENING).split('\n');
   return [
     kicker(context, ink),
-    rect({
-      name: 'rule',
-      size: { w: 919, h: 8 },
-      fill: solid(ink('accent')),
-      transform: { x: MARGIN, y: 438 },
-    }),
+    at(MARGIN, 438, rule(919, solid(ink('accent')), { thickness: 8 }, { name: 'rule' })),
     // The two title lines sit 3 px and the call 5 px under their layers' bounds: measured
     // against the reference art, at these sizes the face's capitals render that much higher.
-    textAt('abertura-1', first, {
+    capitalsAt('abertura-1', first, {
       x: 84,
       capTop: 508,
       size: 140.9,
       weight: BOLD,
       color: ink('accent'),
     }),
-    textAt('abertura-2', second, {
+    capitalsAt('abertura-2', second, {
       x: 79,
       capTop: 695,
       size: 137.2,
       weight: BOLD,
       color: ink('accent'),
     }),
-    textAt('chamada', slotText(context, 'chamada', DEFAULT_CALL), {
+    capitalsAt('chamada', slotText(context, 'chamada', DEFAULT_CALL), {
       x: 729,
       capTop: 686,
       size: 33.1,
@@ -230,10 +251,13 @@ function cover(context: TemplateContext, ink: Ink): NodeDraft[] {
       lineHeight: 1.24,
     }),
     ...linkMark(971, 687, 1, ink('accent')),
-    arrow('seta', { x: 729, y: 846, w: 270, h: 34, shaft: 10 }, ink('accent')),
+    at(COVER_ARROW.x, COVER_ARROW.y, arrow(COVER_ARROW, ink('accent'))),
     ...corners(ink('accent')),
   ];
 }
+
+/** The cover's arrow under the call, the reference's. */
+const COVER_ARROW = { x: 729, y: 846, w: 270, h: 34, shaft: 10 } as const;
 
 /* --------------------------------------------------------------------- the back cover -- */
 
@@ -244,7 +268,7 @@ function backCover(context: TemplateContext, ink: Ink): NodeDraft[] {
       contactIcon(line, CONTACT.iconCentreX, CONTACT.firstCentreY + index * CONTACT.pitch, ink),
     ),
     kicker(context, ink),
-    textAt('fechamento', slotText(context, 'fechamento', DEFAULT_CLOSING), {
+    capitalsAt('fechamento', slotText(context, 'fechamento', DEFAULT_CLOSING), {
       // The reference's lines are 685 px at the widest, centred on the slide; 700 leaves the
       // same breaks room under a face a few pixels wider.
       x: 190,
@@ -256,7 +280,7 @@ function backCover(context: TemplateContext, ink: Ink): NodeDraft[] {
       width: 700,
       align: 'center',
     }),
-    textAt('contatos', slotText(context, 'contatos', DEFAULT_CONTACTS), {
+    capitalsAt('contatos', slotText(context, 'contatos', DEFAULT_CONTACTS), {
       x: 350,
       capTop: 693,
       size: 33.1,
@@ -281,76 +305,57 @@ const CONTACT = { iconCentreX: 305, firstCentreY: 711, pitch: 66 } as const;
  */
 function contactIcon(line: string, centreX: number, centreY: number, ink: Ink): NodeDraft {
   const words = line.toLowerCase();
-  const icon = words.includes('instagram') ? INSTAGRAM : words.includes('youtube') ? YOUTUBE : LINK;
-  return vector({
-    name: `icone-${icon.name}`,
-    geometry: { kind: 'path', d: icon.d, fillRule: 'evenodd' },
-    size: icon.size,
-    fill: solid(ink('accent')),
-    transform: { x: centreX - icon.size.w / 2, y: centreY - icon.size.h / 2 },
-  });
+  const mark = words.includes('instagram') ? INSTAGRAM : words.includes('youtube') ? YOUTUBE : LINK;
+  // Drawn at its own box's height: the geometry is in the reference's pixels.
+  return at(
+    centreX - mark.box.w / 2,
+    centreY - mark.box.h / 2,
+    icon(mark, mark.box.h, ink('accent'), `icone-${mark.name}`),
+  );
 }
 
-interface Icon {
+/** A contact line's mark: third-party geometry held as data, drawn by the kit's `icon`. */
+interface ContactMark extends Icon {
   readonly name: string;
-  readonly size: { readonly w: number; readonly h: number };
-  readonly d: string;
 }
 
-function roundedRect(x: number, y: number, w: number, h: number, r: number): string {
-  return (
-    `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}` +
-    `A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}` +
-    `V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
-  );
-}
+/** Filled, a subpath inside another left as a hole: every contact mark is an outline cut out. */
+const CUT_OUT = { paint: { kind: 'fill' }, fillRule: 'evenodd' } as const;
 
-function circle(cx: number, cy: number, r: number): string {
-  return `M${cx - r} ${cy}A${r} ${r} 0 1 1 ${cx + r} ${cy}A${r} ${r} 0 1 1 ${cx - r} ${cy}Z`;
-}
-
-/** A capsule of half-length `length` and radius `r` around (cx, cy), along a 45° rise. */
-function capsule(cx: number, cy: number, length: number, r: number): string {
-  const along = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
-  const across = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
-  const point = (a: number, b: number) =>
-    `${round(cx + along.x * a + across.x * b)} ${round(cy + along.y * a + across.y * b)}`;
-  return (
-    `M${point(length, -r)}A${r} ${r} 0 0 1 ${point(length, r)}` +
-    `L${point(-length, r)}A${r} ${r} 0 0 1 ${point(-length, -r)}Z`
-  );
-}
-
-const round = (value: number) => Math.round(value * 100) / 100;
+/** The link's capsules lie on a 45° rise. */
+const RISING = { angle: 45 } as const;
 
 /** A rounded square outline, a ring and a dot, 31 px, as the reference's. */
-const INSTAGRAM: Icon = {
+const INSTAGRAM: ContactMark = {
   name: 'instagram',
-  size: { w: 31, h: 31 },
+  box: { w: 31, h: 31 },
   d:
-    roundedRect(0, 0, 31, 31, 9) +
-    roundedRect(3, 3, 25, 25, 6.5) +
-    circle(15.5, 15.5, 7.5) +
-    circle(15.5, 15.5, 4.7) +
-    circle(23.8, 7.2, 2),
+    roundedRectPath(0, 0, 31, 31, 9) +
+    roundedRectPath(3, 3, 25, 25, 6.5) +
+    circlePath(15.5, 15.5, 7.5) +
+    circlePath(15.5, 15.5, 4.7) +
+    circlePath(23.8, 7.2, 2),
+  ...CUT_OUT,
 };
 
 /** A rounded rectangle with a play triangle cut out, 34 × 23 px, as the reference's. */
-const YOUTUBE: Icon = {
+const YOUTUBE: ContactMark = {
   name: 'youtube',
-  size: { w: 34, h: 23 },
-  d: roundedRect(0, 0, 34, 23, 6) + 'M13.5 6.5L22.5 11.5L13.5 16.5Z',
+  box: { w: 34, h: 23 },
+  d: roundedRectPath(0, 0, 34, 23, 6) + 'M13.5 6.5L22.5 11.5L13.5 16.5Z',
+  ...CUT_OUT,
 };
 
 /** Two interlocked capsule outlines on a 45° rise, 24 px, as the reference's. */
-const LINK: Icon = {
+const LINK: ContactMark = {
   name: 'link',
-  size: { w: 24, h: 24 },
+  box: { w: 24, h: 24 },
   d:
-    capsule(7.8, 16.2, 3.6, 4.6) +
-    capsule(7.8, 16.2, 3.6, 2.2) +
-    capsule(16.2, 7.8, 3.6, 4.6) +
-    capsule(16.2, 7.8, 3.6, 2.2),
+    capsulePath(7.8, 16.2, 3.6, 4.6, RISING) +
+    capsulePath(7.8, 16.2, 3.6, 2.2, RISING) +
+    capsulePath(16.2, 7.8, 3.6, 4.6, RISING) +
+    capsulePath(16.2, 7.8, 3.6, 2.2, RISING),
+  ...CUT_OUT,
 };
 
 /* ---------------------------------------------------------------------- an exam slide -- */
@@ -371,89 +376,107 @@ const LINK: Icon = {
  * signature, is reported as `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058).
  */
 function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[] {
-  const value = context.slots['lamina']?.value;
-  const all =
-    value?.kind === 'rich-text' ? lines(value.text).map((line) => plain(line).trim()) : [];
-  const written = all.filter((line) => line !== '');
-  const [title = '', ...rest] = written;
+  const written: Written[] = slideRichLines(context).map((line) => ({
+    marked: line,
+    words: plain(line).trim(),
+  }));
+  const [title, ...rest] = written;
   const subtitle =
-    rest[0] !== undefined && labelOfText(rest[0]).label === undefined ? rest.shift() : undefined;
+    rest[0] !== undefined && labelOfText(rest[0].words).label === undefined
+      ? rest.shift()
+      : undefined;
   const titleLines = wrapAt(
-    keepTogetherText(title).toUpperCase(),
+    keepTogetherText(title?.words ?? '').toUpperCase(),
     numberValue(context, 'title-line-max', NUMBER_DEFAULTS['title-line-max']),
   );
-  const block = (titleTop: number) => examBlock(context, ink, titleLines, subtitle, rest, titleTop);
-
-  // Laid out once to learn the block's height, which does not depend on where it starts.
-  const trial = block(EXAM.titleTop);
-  const middle = (EXAM.logoFoot + footerTop) / 2;
-  const titleTop = Math.max(
-    EXAM.highestTitleTop,
-    Math.round(middle - (trial.foot - EXAM.titleTop) / 2),
+  const block = examBlock(
+    context,
+    ink,
+    { marked: title?.marked ?? [], words: titleLines.join('\n') },
+    subtitle && { marked: subtitle.marked, words: subtitle.words.toUpperCase() },
+    rest,
   );
-  const placed = titleTop === EXAM.titleTop ? trial : block(titleTop);
 
-  if (placed.card) reportOverflow(context.report, placed.foot, footerTop);
-  return [
-    ...placed.nodes,
-    arrow('seta', { x: 848, y: footerTop, w: 151, h: 25, shaft: 7 }, ink('title-ink')),
-  ];
+  // Measured before it is placed: its height does not depend on where it starts.
+  const middle = (EXAM.logoFoot + footerTop) / 2;
+  const titleTop = Math.max(EXAM.highestTitleTop, Math.round(middle - block.height / 2));
+  if (block.card) reportOverflow(context.report, titleTop + block.height, footerTop);
+  return [at(0, titleTop - anchorOf(block.column).capTop, block.column)];
 }
 
-/** The title, the subtitle and the card from `titleTop` down, and the foot of the lowest. */
+/**
+ * The title, the subtitle and the card as one column, each below the one before and every gap
+ * measured between capitals. `height` runs from the title's first capitals to the card's foot,
+ * or to the last baseline when the exam writes no fact.
+ */
 function examBlock(
   context: TemplateContext,
   ink: Ink,
-  titleLines: readonly string[],
-  subtitle: string | undefined,
-  facts: readonly string[],
-  titleTop: number,
-): { readonly nodes: NodeDraft[]; readonly foot: number; readonly card: boolean } {
-  const centred = { x: 0, width: SLIDE_WIDTH, align: 'center' as const };
-  const nodes: NodeDraft[] = [
-    textAt('titulo', titleLines.join('\n'), {
-      ...centred,
-      capTop: titleTop,
-      size: EXAM.titleSize,
-      weight: BLACK,
-      color: ink('title-ink'),
-    }),
-  ];
-  // Where the next piece's capitals start: one title line's pitch below the last one.
-  const capTop = titleTop + titleLines.length * EXAM.titleSize;
-  let foot = capTop - EXAM.titleSize + EXAM.titleSize * CAP_HEIGHT;
-  if (subtitle !== undefined) {
-    nodes.push(
-      textAt('subtitulo', subtitle.toUpperCase(), {
-        ...centred,
-        capTop,
-        size: EXAM.subtitleSize,
-        weight: BLACK,
-        color: ink('subtitle-ink'),
-      }),
+  title: Written,
+  subtitle: Written | undefined,
+  facts: readonly Written[],
+): { readonly column: Block; readonly height: number; readonly card: boolean } {
+  const slide = { width: SLIDE_WIDTH, height: Infinity };
+  const marks = highlightsOf(ink);
+  // A heading is drawn in capitals, in the lines the template broke it into; its highlights are
+  // read from what the brief wrote and laid over those lines glyph by glyph.
+  const heading = (name: string, line: Written, size: number, color: string): Block => {
+    const style = { font: FACE, size, weight: BLACK, color };
+    const capitals = runsOf(line.marked, style, marks.header.options).map((part) =>
+      part.kind === 'text' ? { ...part, text: part.text.toUpperCase() } : part,
     );
-    foot = capTop + EXAM.subtitleSize * CAP_HEIGHT;
-  }
-
-  const laid = card(context, ink, facts, foot + EXAM.cardGap);
-  if (laid === undefined) return { nodes, foot, card: false };
-  return { nodes: [...nodes, ...laid.nodes], foot: laid.foot, card: true };
+    const drawn = plainRuns(line.words, style);
+    return capText(
+      atLeastOne(paintedLike(drawn, capitals)) ?? drawn,
+      slide,
+      { size, align: 'center' },
+      // Never cut at the box: an accented capital on the first line rises above the line's box.
+      { name, text: { overflow: 'grow' } },
+    );
+  };
+  const laid = card(context, ink, facts, marks.facts);
+  const column = stackIn(
+    slide,
+    [
+      heading('titulo', title, EXAM.titleSize, ink('title-ink')),
+      ...(subtitle === undefined
+        ? []
+        : [
+            {
+              item: heading('subtitulo', subtitle, EXAM.subtitleSize, ink('subtitle-ink')),
+              gapAbove: EXAM.subtitleGap,
+            },
+          ]),
+      // The card's anchor is its facts' capitals, `card-padding` under its top edge.
+      ...(laid === undefined ? [] : [{ item: laid.block, gapAbove: EXAM.cardGap + laid.padding }]),
+    ],
+    { measureFrom: 'capitals' },
+    { name: 'concurso' },
+  );
+  const anchor = anchorOf(column);
+  return {
+    column,
+    height: (laid === undefined ? anchor.baseline : column.height) - anchor.capTop,
+    card: laid !== undefined,
+  };
 }
 
 /** An exam slide's numbers, the reference art's: sizes, where the title starts, the gaps. */
 const EXAM = {
-  /** Where the block is laid out to measure it; the reference's title top. */
-  titleTop: 368,
   /** The foot of the logo, drawn 68 px tall from 67: the top of the band the block centres in. */
   logoFoot: 67 + 68,
   /** The highest a tall block's title may start: a card gap below the logo. */
   highestTitleTop: 67 + 68 + 66,
-  /** The top of the arrow, the highest thing at the foot; the signature's capitals start below it. */
-  footerTop: 1217,
   titleSize: 72,
   subtitleSize: 40,
+  /**
+   * From the title's last baseline to the subtitle's capitals: the subtitle's capitals start one
+   * title line's pitch below the last title line's.
+   */
+  subtitleGap: 72 * (1 - CAP_HEIGHT),
   /** From the foot of the subtitle's capitals to the card's top edge. */
   cardGap: 66,
+  cardRadius: 32,
   factSize: 40,
   factLineHeight: 1.2,
   /** A glyph's advance, in em, for when nothing can be measured (a test, CI without the face). */
@@ -461,116 +484,75 @@ const EXAM = {
 } as const;
 
 /**
- * The card and its facts, and where the card's edge ends (its shadow not counted), or nothing
- * when the exam writes no fact. Its edges sit `card-padding` from the facts' first capitals,
- * from the foot of the last line's capitals, and from the widest line's sides.
+ * The card and its facts, or nothing when the exam writes no fact. The kit hugs the facts'
+ * widest line (`huggedText`) and pads the card from their first capitals, from the foot of the
+ * last line's capitals and from the widest line's sides (`paddedCard`), each by `card-padding`.
  */
 function card(
   context: TemplateContext,
   ink: Ink,
-  facts: readonly string[],
-  top: number,
-): { readonly nodes: NodeDraft[]; readonly foot: number } | undefined {
-  const runs = facts.flatMap((line, index) => {
-    // The kit glues a currency sign to its amount (TYTO-593) and finds the label at the first
-    // colon (TYTO-594); a line without a label is drawn whole in the label's ink.
-    const fact = labelOfText(keepTogetherText(line));
-    const label = fact.label ?? fact.text;
-    const detail = fact.label === undefined ? '' : fact.text;
+  facts: readonly Written[],
+  marks: Highlights,
+): { readonly block: Block; readonly padding: number } | undefined {
+  const fact = { font: FACE, size: EXAM.factSize } as const;
+  const styles = {
+    label: { ...fact, weight: MEDIUM, color: ink('label-ink') },
+    value: { ...fact, weight: LIGHT, color: ink('value-ink') },
+  };
+  // The kit glues a currency sign to its amount (TYTO-593) and finds the label at the first
+  // colon (TYTO-594); a line without a label is drawn whole in the label's ink. The glue between
+  // a connector and the word after it is this template's own vocabulary, handed in. A value
+  // then takes the highlights its line wrote; a label, and a line with no label, keep their ink.
+  const [first, ...others] = facts.flatMap((line, index) => {
+    const drawn = labelValueRuns(
+      [line.words],
+      styles,
+      { unlabelled: 'label', labelGap: 'as-written', keepTogether: 'yes' },
+      { value: glueConnectors },
+    );
+    const VALUE = 1;
     return [
       ...(index > 0 ? [lineBreak()] : []),
-      run(label, { font: FACE, size: EXAM.factSize, weight: MEDIUM, color: ink('label-ink') }),
-      ...(detail === ''
-        ? []
-        : [
-            run(keepTogether(detail), {
-              font: FACE,
-              size: EXAM.factSize,
-              weight: LIGHT,
-              color: ink('value-ink'),
-            }),
-          ]),
+      ...(drawn[VALUE] === undefined
+        ? drawn
+        : paintedLike(drawn, runsOf(line.marked, styles.value, marks.options), VALUE)),
     ];
   });
-  const [first, ...others] = runs;
   if (first === undefined) return undefined;
 
   const padding = numberValue(context, 'card-padding', NUMBER_DEFAULTS['card-padding']);
   const widest =
     numberValue(context, 'card-max-width', NUMBER_DEFAULTS['card-max-width']) - padding * 2;
-  const pitch = EXAM.factSize * EXAM.factLineHeight;
-  const draft = (
-    box: { readonly w?: number },
-    at = { x: 0, y: 0 },
-    written: NonEmptyRuns = [first, ...others],
-  ) =>
-    text({
-      name: 'fatos',
-      runs: written,
-      box,
+  const words = huggedText(
+    [first, ...others],
+    widest,
+    {
+      size: EXAM.factSize,
       lineHeight: EXAM.factLineHeight,
-      overflow: 'grow',
-      transform: at,
-    });
-
-  const fit = hug((w) => context.measure(draft(w === undefined ? {} : { w })), widest);
-  const width = fit?.width ?? Math.min(widest, Math.ceil(estimatedWidth(facts)));
-  const lineCount = fit?.lines ?? facts.length;
-  // A wrapped card is narrower than the box its facts were wrapped in; its breaks are kept as
-  // they were decided, so the narrower box cannot wrap them anywhere else.
-  const wrapped = fit?.wrappedRuns;
-
-  const size = {
-    w: width + padding * 2,
-    h: (lineCount - 1) * pitch + EXAM.factSize * CAP_HEIGHT + padding * 2,
-  };
-  const left = Math.round((SLIDE_WIDTH - size.w) / 2);
-  const capTop = top + padding;
-  const nodes = [
-    rect({
-      name: 'card',
-      size,
-      radius: 32,
-      fill: solid(ink('card')),
-      effects: [SHADOW],
-      transform: { x: left, y: top },
-    }),
-    // One pixel past the measured width, so the widest line does not wrap on a rounding.
-    draft(
-      { w: width + 1 },
-      { x: left + padding, y: capTop - capOffset(EXAM.factSize, EXAM.factLineHeight) },
-      wrapped,
-    ),
-  ];
-  return { nodes, foot: top + size.h };
-}
-
-type NonEmptyRuns = Parameters<typeof text>[0]['runs'];
-
-/**
- * The card's inner width and line count: the facts' widest line, laid out on one line each
- * when they fit `widest`, and otherwise wrapped at `widest` and measured again, so the card
- * hugs the widest line the wrap left and not the box it wrapped in (the maintainer,
- * 2026-10-30: the gap on the right must equal the one on the left). `undefined` when nothing
- * can be measured. A width is an advance, not ink: a glyph's side bearing is not seen.
- */
-export function hug(
-  measure: (w?: number) => TextMeasurement | undefined,
-  widest: number,
-):
-  | { readonly width: number; readonly lines: number; readonly wrappedRuns?: NonEmptyRuns }
-  | undefined {
-  const natural = measure();
-  if (natural === undefined) return undefined;
-  if (natural.width <= widest) return { width: Math.ceil(natural.width), lines: natural.lines };
-  const laid = measure(widest);
-  if (laid === undefined) return { width: widest, lines: natural.lines };
-  const [first, ...others] = laid.runs;
-  return {
-    width: Math.min(widest, Math.ceil(laid.width)),
-    lines: laid.lines,
-    ...(first === undefined ? {} : { wrappedRuns: [first, ...others] }),
-  };
+      estimatedAdvance: EXAM.estimatedAdvance,
+    },
+    { measure: context.measure, name: 'fatos', text: { overflow: 'grow' } },
+  );
+  const surface = paddedCard(
+    words,
+    { fill: solid(ink('card')), shadow: SHADOW.color },
+    {
+      paddingTop: padding,
+      paddingRight: padding,
+      paddingBottom: padding,
+      paddingLeft: padding,
+      radius: EXAM.cardRadius,
+      measureFrom: 'capitals',
+      shadowX: SHADOW.x,
+      shadowY: SHADOW.y,
+      shadowBlur: SHADOW.blur,
+    },
+    { name: 'cartao' },
+  );
+  // Centred on the slide on a whole pixel, as the reference's: a centred stack would leave a
+  // card of odd width on a half pixel.
+  const left = Math.round((SLIDE_WIDTH - surface.width) / 2);
+  return { block: inset({ item: surface, padding: [0, 0, 0, left] }), padding };
 }
 
 /**
@@ -578,19 +560,7 @@ export function hug(
  * 6.9 px down). Photoshop's 16 px size fades out within 18 px of the edge; a blur of 8
  * does the same here, measured beside and below the card (10 still reached 25 px).
  */
-const SHADOW = {
-  kind: 'shadow',
-  x: 4,
-  y: 6.9,
-  blur: 8,
-  spread: 0,
-  color: { r: 0, g: 0, b: 0, a: 0.35 },
-} as const;
-
-function estimatedWidth(facts: readonly string[]): number {
-  const longest = Math.max(0, ...facts.map((line) => [...line].length));
-  return longest * EXAM.estimatedAdvance * EXAM.factSize;
-}
+const SHADOW = { x: 4, y: 6.9, blur: 8, color: { r: 0, g: 0, b: 0, a: 0.35 } } as const;
 
 /**
  * Short words that read as the start of what follows them: a line never ends on one, in the
@@ -667,7 +637,7 @@ function unbreakable(words: readonly string[]): string[][] {
  * A card fact with no-break spaces where a line must not break, so the renderer's own wrap
  * never leaves a connector, a lone character or a dash at a line's edge.
  */
-export function keepTogether(text: string): string {
+export function glueConnectors(text: string): string {
   const leading = /^\s/.test(text) ? ' ' : '';
   const words = wordsOf(text);
   return (
@@ -688,6 +658,8 @@ const MOST_PIECES_TO_BALANCE = 16;
  * with a dash. A word longer than the limit stands on a line of its own rather than being cut.
  */
 export function wrapAt(words: string, limit: number): string[] {
+  // The template's own word logic, pending a kit piece (TYTO-906): the kit's `balance` breaks by
+  // measured width and answers nothing without faces, where this counts characters.
   const pieces = unbreakable(wordsOf(words)).map((piece) => piece.join(' '));
   if (pieces.length === 0) return [''];
   const greedy = fill(pieces, limit);
@@ -745,73 +717,140 @@ function score(lines: readonly string[]): { longest: number; ragged: number } {
   };
 }
 
+/* -------------------------------------------------------------------- the highlights -- */
+
+/** A line of an exam: what the brief wrote, marks and all, and the words the template draws. */
+interface Written {
+  readonly marked: RichText;
+  readonly words: string;
+}
+
+/** The mark family that paints a span of an exam's title or subtitle: `{cor:destaque-2}…{/}`. */
+const COLOR_MARK = 'cor';
+/** The colours a `{cor:…}` mark may name: the highlights a brief can set in its frontmatter. */
+const HIGHLIGHT_NAMES = ['destaque', 'destaque-2', 'destaque-3'] as const;
+
+/**
+ * What the brief's highlights look like on an exam slide, read by the kit (TYTO-554). In the
+ * card's values `**…**` is Bold in `destaque`. In the title and the subtitle `**…**` paints
+ * `destaque` and `{cor:destaque|destaque-2|destaque-3}` its colour, and both keep the heading's
+ * weight, which is already the face's heaviest. A name the template does not declare leaves the
+ * words as they are. The cover and the back cover take no highlight.
+ */
+function highlightsOf(ink: Ink): { readonly facts: Highlights; readonly header: Highlights } {
+  const facts = highlights({ bold: { color: ink('destaque') } });
+  const values = Object.fromEntries(HIGHLIGHT_NAMES.map((name) => [name, { color: ink(name) }]));
+  return {
+    facts,
+    header: facts.with({
+      bold: { weight: BLACK },
+      marks: { [COLOR_MARK]: { like: 'plain', values } },
+    }),
+  };
+}
+
+const isBlank = (glyph: string | undefined): boolean => glyph !== undefined && /\s/.test(glyph);
+
+const sameLook = (one: TextSpan, other: TextSpan): boolean =>
+  one.weight === other.weight && JSON.stringify(one.color) === JSON.stringify(other.color);
+
+/**
+ * `drawn` in the colour and the weight `written` gives each glyph. The two hold the same glyphs
+ * in the same order and differ only in their blanks: the template broke a title into lines and
+ * glued a fact's words with no-break spaces after the brief's marks were read, so a highlight is
+ * found again by walking both, glyph by glyph. A drawn run before `from` is walked and left whole
+ * (a fact's label), and so is any glyph `written` does not have at that place.
+ *
+ * Pending a kit piece (TYTO-906): a wrap that takes runs would keep each word's look itself.
+ */
+function paintedLike(drawn: readonly TextRun[], written: readonly TextRun[], from = 0): TextRun[] {
+  const source = written.flatMap((span) =>
+    span.kind === 'text' ? [...span.text].map((glyph) => ({ glyph, span })) : [],
+  );
+  let next = 0;
+  return drawn.flatMap((given, index): TextRun[] => {
+    if (given.kind !== 'text') return [given];
+    const pieces: { text: string; like: TextSpan }[] = [];
+    for (const glyph of given.text) {
+      const blank = isBlank(glyph);
+      if (!blank) while (isBlank(source[next]?.glyph)) next += 1;
+      const found = source[next];
+      const same = found !== undefined && (blank ? isBlank(found.glyph) : found.glyph === glyph);
+      if (same) next += 1;
+      const last = pieces[pieces.length - 1];
+      const like = same ? found.span : (last?.like ?? given);
+      if (last !== undefined && sameLook(last.like, like)) last.text += glyph;
+      else pieces.push({ text: glyph, like });
+    }
+    if (index < from) return [given];
+    return pieces.map(({ text, like }) =>
+      sameLook(like, given)
+        ? { ...given, text }
+        : { ...given, text, color: like.color, weight: like.weight },
+    );
+  });
+}
+
 /* ------------------------------------------------------------------------ the shared -- */
 
-interface ArrowBox {
-  readonly x: number;
-  readonly y: number;
+interface ArrowSize {
   readonly w: number;
   /** The head's height; the shaft is centred on it. */
   readonly h: number;
   readonly shaft: number;
 }
 
-/** The arrow pointing to the next slide: a shaft and a triangular head 0.62 of its height long. */
-function arrow(name: string, box: ArrowBox, color: string): NodeDraft {
-  const head = Math.round(box.h * 0.62);
-  const top = (box.h - box.shaft) / 2;
-  const neck = box.w - head;
-  const d = `M0 ${top}H${neck}V0L${box.w} ${box.h / 2}L${neck} ${box.h}` + `V${top + box.shaft}H0Z`;
-  return vector({
-    name,
-    geometry: { kind: 'path', d, fillRule: 'nonzero' },
-    size: { w: box.w, h: box.h },
-    fill: solid(color),
-    transform: { x: box.x, y: box.y },
-  });
+/** The next-slide arrow's head, as a share of its height: the reference's. */
+const ARROW_HEAD_RATIO = 0.62;
+
+/** The arrow pointing to the next slide: a shaft and a triangular head. */
+function arrow(size: ArrowSize, color: string): Block {
+  return arrowShape(
+    { w: size.w, h: size.h },
+    solid(color),
+    { shaft: size.shaft, headRatio: ARROW_HEAD_RATIO },
+    { name: 'seta' },
+  );
 }
 
-/** The two corner marks of the dark slides, each an L of two 5 px bars, at the reference's. */
+/** The two corner marks of the dark slides, each an L of 5 px arms in a 16 px square. */
+const CORNERS = {
+  size: 16,
+  thickness: 5,
+  marks: [
+    { name: 'canto-1', corner: 'top-left', x: 78, y: 238 },
+    { name: 'canto-2', corner: 'bottom-right', x: 985, y: 1118 },
+  ],
+} as const;
+
 function corners(color: string): NodeDraft[] {
-  const bars = [
-    { x: 78, y: 238, w: 5, h: 16 },
-    { x: 78, y: 238, w: 16, h: 5 },
-    { x: 996, y: 1118, w: 5, h: 16 },
-    { x: 985, y: 1129, w: 16, h: 5 },
-  ];
-  return bars.map((bar, index) =>
-    rect({
-      name: `canto-${index + 1}`,
-      size: { w: bar.w, h: bar.h },
-      fill: solid(color),
-      transform: { x: bar.x, y: bar.y },
-    }),
+  return CORNERS.marks.map(({ name, corner, x, y }) =>
+    at(
+      x,
+      y,
+      cornerBracket(CORNERS.size, solid(color), { thickness: CORNERS.thickness, corner }, { name }),
+    ),
   );
 }
 
 /** The small mark of two squares — one filled, one outlined — drawn at a scale of the cover's. */
 function linkMark(x: number, y: number, scale: number, color: string): NodeDraft[] {
   const s = (value: number) => Math.round(value * scale * 10) / 10;
+  const outline = { paint: solid(color), width: 1, align: 'inside' } as const;
   return [
-    rect({
-      name: 'marca-cheia',
-      size: { w: s(11), h: s(11) },
-      fill: solid(color),
-      transform: { x: x + s(12), y },
-    }),
-    rect({
-      name: 'marca-vazada',
-      size: { w: s(12), h: s(13) },
-      stroke: { paint: solid(color), width: 1, align: 'inside' },
-      transform: { x, y: y + s(11) },
-    }),
+    at(x + s(12), y, shape({ w: s(11), h: s(11) }, solid(color), {}, { name: 'marca-cheia' })),
+    at(
+      x,
+      y + s(11),
+      shape({ w: s(12), h: s(13) }, undefined, {}, { outline, name: 'marca-vazada' }),
+    ),
   ];
 }
 
 /** The tiny tracked words at the top of the cover and the back cover: the title on one line. */
 function kicker(context: TemplateContext, ink: Ink): NodeDraft {
   const words = slotText(context, 'abertura', DEFAULT_OPENING).replace(/\s+/g, ' ').trim();
-  return textAt('rubrica', words, {
+  return capitalsAt('rubrica', words, {
     x: 0,
     capTop: 207,
     size: 10,
@@ -843,19 +882,45 @@ export const SIGNATURE = {
   centre: 539.55,
 } as const;
 
-function signature(context: TemplateContext, color: string, baseline: number): NodeDraft {
-  // The box spans the slide's left edge to twice the reference's centre, so it centres there.
-  // Tyto's export centres a tracked line by its ink (TYTO-491), so no half tracking is added.
-  return textAt('assinatura', signatureOf(context.brand), {
-    x: 0,
-    capTop: baseline - CAP_HEIGHT * SIGNATURE.size,
-    size: SIGNATURE.size,
-    weight: LIGHT,
-    color,
-    width: 2 * SIGNATURE.centre,
-    align: 'center',
-    letterSpacing: SIGNATURE.letterSpacing,
-  });
+/**
+ * An exam's arrow in the footer, the reference's: its foot 108 px above the page's and its tip
+ * 81 px from the right edge, which on a page with no seal is the arrow's top at 1217.
+ */
+const FOOTER = {
+  arrow: { w: 151, h: 25, shaft: 7 },
+  arrowFromFoot: 108,
+  arrowInset: 81,
+} as const;
+
+/**
+ * The footer over `page`, the slide less the seal's band: the brand's signature, and on an exam
+ * slide the arrow at its right. The kit stands both on the page's foot.
+ */
+function footer(context: TemplateContext, page: Area, color: string, dark: boolean): NodeDraft {
+  const baseline = dark ? SIGNATURE.baseline : SIGNATURE.examBaseline;
+  const line = signatureLine(
+    signatureOf(context.brand),
+    // The area spans the slide's left edge to twice the reference's centre, so the line centres
+    // there. Tyto's export centres a tracked line by its ink (TYTO-491): no half tracking added.
+    { width: 2 * SIGNATURE.centre, height: Infinity },
+    { font: FACE, weight: LIGHT, color },
+    { size: SIGNATURE.size, letterSpacing: SIGNATURE.letterSpacing },
+    { name: 'assinatura', text: { overflow: 'grow' } },
+  );
+  return at(
+    0,
+    0,
+    carouselFooter(
+      page,
+      { signature: line, ...(dark ? {} : { trailing: arrow(FOOTER.arrow, color) }) },
+      {
+        signatureFromFoot: SLIDE_HEIGHT - (baseline - CAP_HEIGHT * SIGNATURE.size),
+        trailingFromFoot: FOOTER.arrowFromFoot,
+        trailingInset: FOOTER.arrowInset,
+      },
+      { name: 'rodape' },
+    ),
+  );
 }
 
 interface Placed {
@@ -871,29 +936,21 @@ interface Placed {
   readonly letterSpacing?: number;
 }
 
-/** A plain text, one run per line, placed by the top of its capitals. */
-function textAt(name: string, words: string, placed: Placed): NodeDraft {
-  const lineHeight = placed.lineHeight ?? 1;
+/** A plain text, one run per line, as the kit's block placed by the top of its capitals. */
+function capitalsAt(name: string, words: string, placed: Placed): NodeDraft {
   const style = { font: FACE, size: placed.size, weight: placed.weight, color: placed.color };
-  const [first = '', ...others] = words.split('\n');
-  return text({
-    name,
-    runs: [run(first, style), ...others.flatMap((line) => [lineBreak(), run(line, style)])],
-    ...(placed.width === undefined ? {} : { box: { w: placed.width } }),
-    align: placed.align ?? 'left',
-    lineHeight,
-    letterSpacing: placed.letterSpacing ?? 0,
+  const set = capText(
+    plainRuns(words, style),
+    { width: placed.width ?? Infinity, height: Infinity },
+    {
+      size: placed.size,
+      lineHeight: placed.lineHeight ?? 1,
+      letterSpacing: placed.letterSpacing ?? 0,
+      align: placed.align ?? 'left',
+    },
     // Never cut at the box: at a line height of 1 an accented capital on the first line
     // (the Á of MONGAGUÁ) rises above the line's box, and a clipped box drops the accent.
-    overflow: 'grow',
-    transform: { x: placed.x, y: placed.capTop - capOffset(placed.size, lineHeight) },
-  });
-}
-
-/** A rich-text slot's words as plain text, or the template's default when the brief left it out. */
-function slotText(context: TemplateContext, name: string, fallback: string): string {
-  const value = context.slots[name]?.value;
-  if (value?.kind !== 'rich-text') return fallback;
-  const words = plain(value.text).trim();
-  return words === '' ? fallback : words;
+    { name, text: { overflow: 'grow' } },
+  );
+  return at(placed.x, placed.capTop - anchorOf(set).capTop, set);
 }

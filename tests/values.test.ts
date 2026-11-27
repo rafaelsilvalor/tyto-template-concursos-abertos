@@ -10,7 +10,8 @@ import type { SuppliedValues } from '@tyto/core';
 
 /**
  * What a configuration may change in `concursos-abertos` (Tyto ADR 0153): the colours, the
- * card's padding and the title's line length.
+ * highlights (`destaque`, `destaque-2`, `destaque-3`; what each paints is in
+ * `highlights.test.ts`), the card's padding and the title's line length.
  *
  * The code reads each one through `@tyto/core`'s `colorValue` and `numberValue` and falls back
  * to `COLOR_DEFAULTS` and `NUMBER_DEFAULTS`, so the pin is between the manifest and those
