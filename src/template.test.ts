@@ -43,7 +43,7 @@ const anySeal: AssetResolver = {
 
 async function compiled(
   brief: string,
-  options: Pick<CompileTemplateOptions, 'assets' | 'values'> = {},
+  options: Pick<CompileTemplateOptions, 'assets' | 'values' | 'faces'> = {},
 ) {
   const result = await compileTemplate({
     brief: brief.startsWith('---')
@@ -297,6 +297,60 @@ describe('the limits of an exam slide', () => {
 
     expect(box.size.w - left - inner).toBe(left);
     expect(left).toBe(NUMBER_DEFAULTS['card-padding']);
+  });
+
+  /**
+   * The slides compiled with a face whose every glyph is 0.375 em wide, 15 px at the card's
+   * 40 px: with a face the kit measures a line, where without one it counts 0.55 em a glyph.
+   */
+  const measuredSlides = async (brief: string): Promise<Frame[]> => {
+    const narrow = { advance: (text: string) => [...text].length * 0.375, contentHeight: 1.2 };
+    const result = await compiled(brief, { faces: { get: () => narrow } });
+    return result.value.scene.artworks.flatMap((artwork) => artwork.frames);
+  };
+
+  it('hugs the widest line as the face measures it, not as the estimate counts it', async () => {
+    // "Vagas: 85" is 9 glyphs: 135 px measured, where the estimate counts 198.
+    const [exam] = await measuredSlides('::lamina\n  SEDUC QX\n  Vagas: 85');
+
+    expect(card(exam!).size.w).toBe(9 * 15 + 2 * NUMBER_DEFAULTS['card-padding']);
+  });
+
+  it('stands the card on a whole pixel, centred within half of one, whatever its width', async () => {
+    // Nine glyphs make a card of odd width, 263 px, and ten one of even width, 278.
+    const [odd, even] = await measuredSlides(
+      '::lamina\n  SEDUC QX\n  Vagas: 85\n::lamina\n  SEDUC QX\n  Vagas: 850',
+    );
+
+    expect(card(odd!).size.w % 2).toBe(1);
+    expect(card(even!).size.w % 2).toBe(0);
+    for (const box of [card(odd!), card(even!)]) {
+      expect(Number.isInteger(box.transform.x)).toBe(true);
+      expect(Math.abs(box.transform.x + box.size.w / 2 - 1080 / 2)).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  // No card: the block ends on its last line's baseline, not at the foot of that line's box. The
+  // kit's metrics put the capitals 0.75 - 0.709 em under a line's top and the baseline 0.75 em.
+  // How far the middle of the block, from the title's capitals to the last baseline of the node
+  // `last` (set at `lastSize`), stands from the middle of the room between the logo and the arrow.
+  const offCentre = async (brief: string, last: string, lastSize: number): Promise<number> => {
+    const [exam] = await slides(brief);
+    const top = (name: string): number =>
+      nodes(exam!).find((node) => node.name === name)!.transform.y;
+    const capitals = top('titulo') + (0.75 - 0.709) * 72;
+    const baseline = top(last) + 0.75 * lastSize;
+    return Math.abs((capitals + baseline) / 2 - (135 + 1217) / 2);
+  };
+
+  it("centres an exam that is a title alone from its capitals to the title's baseline", async () => {
+    expect(await offCentre('::lamina\n  SEDUC QX', 'titulo', 72)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("centres an exam with a subtitle and no fact down to the subtitle's baseline", async () => {
+    expect(
+      await offCentre('::lamina\n  SEDUC QX\n  Professor', 'subtitulo', 40),
+    ).toBeLessThanOrEqual(0.5);
   });
 
   const tall = (titleLines: number, factCount: number): string =>
