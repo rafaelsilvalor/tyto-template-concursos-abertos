@@ -11,20 +11,11 @@ import {
   DEFAULT_OPENING,
   NUMBER_DEFAULTS,
   build,
-  hug,
-  keepTogether,
+  glueConnectors,
   wrapAt,
 } from './template.js';
 
-import type {
-  AssetResolver,
-  Frame,
-  RectNode,
-  SceneNode,
-  TextMeasurement,
-  TextNode,
-  TextRun,
-} from '@tyto/core';
+import type { AssetResolver, Frame, RectNode, SceneNode, TextNode } from '@tyto/core';
 
 /**
  * The carousel's rules, asserted on the scene: which slide the brief's marks make, what each
@@ -82,8 +73,17 @@ async function overflows(
     .map((item) => item.message);
 }
 
-function nodes(parent: { readonly children: readonly SceneNode[] }): SceneNode[] {
-  return parent.children.flatMap((node) => [node, ...('children' in node ? nodes(node) : [])]);
+/**
+ * Every node under `parent`, each placed in the slide's pixels: the kit's arrangements are
+ * groups, and a group's offset is added to its children's.
+ */
+function nodes(parent: { readonly children: readonly SceneNode[] }, dx = 0, dy = 0): SceneNode[] {
+  return parent.children.flatMap((node) => {
+    const x = node.transform.x + dx;
+    const y = node.transform.y + dy;
+    const placed = { ...node, transform: { ...node.transform, x, y } } as SceneNode;
+    return [placed, ...('children' in node ? nodes(node, x, y) : [])];
+  });
 }
 
 const texts = (frame: Frame): TextNode[] =>
@@ -207,11 +207,11 @@ describe('the limits of an exam slide', () => {
   });
 
   it('glues what must not break on the card with no-break spaces', () => {
-    expect(keepTogether(' Fundamental, Médio e Superior')).toBe(
+    expect(glueConnectors(' Fundamental, Médio e Superior')).toBe(
       ' Fundamental, Médio e\u00a0Superior',
     );
     // The kit's no-break space between `R$` and its amount (TYTO-593) is not a word's edge.
-    expect(keepTogether(' até R$\u00a04.318,00 - mais auxílio')).toBe(
+    expect(glueConnectors(' até R$\u00a04.318,00 - mais auxílio')).toBe(
       ' até R$\u00a04.318,00\u00a0- mais auxílio',
     );
   });
@@ -286,37 +286,6 @@ describe('the limits of an exam slide', () => {
 
     expect(card(short!).size.w).toBeLessThan(card(long!).size.w);
     expect(card(long!).size.w).toBeLessThanOrEqual(NUMBER_DEFAULTS['card-max-width']);
-  });
-
-  /** A measurement as the app's would give it: `width` the widest laid-out line. */
-  const measured = (width: number, lines: number): TextMeasurement => ({
-    runs: [{ kind: 'text', text: 'Cargos: Professor Assistente', style: {} } as TextRun],
-    lines,
-    width,
-    height: lines * 48,
-    scale: 1,
-    overflow: 0,
-  });
-
-  it('hugs the widest line a wrap leaves, not the box it wrapped in', () => {
-    // UNIFESP: 'Cargos: Professor Assistente Substituto' is 760 px on one line, past the
-    // 652 px the card may hold; wrapped, its widest line is 'Remuneração: até R$ 5.037,78'.
-    const widths: (number | undefined)[] = [];
-    const fit = hug((w) => {
-      widths.push(w);
-      return w === undefined ? measured(760.4, 6) : measured(538.2, 7);
-    }, 652);
-
-    expect(widths).toEqual([undefined, 652]);
-    expect(fit?.width).toBe(539);
-    expect(fit?.lines).toBe(7);
-    expect(fit?.wrappedRuns).toHaveLength(1);
-  });
-
-  it('leaves facts that fit on one line each as they were', () => {
-    const fit = hug((w) => (w === undefined ? measured(420.3, 4) : measured(0, 0)), 652);
-
-    expect(fit).toEqual({ width: 421, lines: 4 });
   });
 
   it('puts the same gap on the left and the right of the widest line', async () => {
