@@ -19721,7 +19721,7 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.55.0/node_modules/@rafaelsilvalor/tyto-core/dist/chunk-IT6P3KDS.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.60.0/node_modules/@rafaelsilvalor/tyto-core/dist/chunk-W34XOUY2.js
 var SVG_MARKUP_WAY_OUT = "only flat shapes painted by presentation attributes are inlined: draw it as a contour (a vector of kind 'path'), place it as a PNG, or re-export it from Illustrator with Styling set to Presentation Attributes";
 var diagnosticCodes = {
   // Three syntax codes and not one, because fatality is a property of the code and one
@@ -19784,6 +19784,24 @@ var diagnosticCodes = {
     spec: "docs/brief-language.md",
     fatal: false,
     fatality: "The value of one slot; it stays unset and the rest of the artwork is drawn anyway."
+  },
+  E_BAD_COMUM: {
+    severity: "error",
+    summary: "A `::comum` line, which closes the slides, carries text or adjustments, or is written where there are no slides to close.",
+    template: "'::comum' {problem}.",
+    spec: "docs/brief-language.md",
+    fatal: false,
+    fatality: "One line: what it carries is ignored, and a misplaced one closes nothing while the rest of the brief is read as written."
+  },
+  // An error, not a warning (ADR 0227): an anchor that places nothing would leave the block
+  // off that artwork without a word.
+  E_BAD_BLOCK_NAME: {
+    severity: "error",
+    summary: "A shared block's name, or an empty directive that places one on a slide, does not name a shared block once.",
+    template: "'::{slot}' {problem}.",
+    spec: "docs/adr/0227-shared-and-slide-blocks-add-up-and-a-named-block-is-placed-by-name.md",
+    fatal: false,
+    fatality: "One line: the name or the anchor is ignored, and the shared block is drawn where it was written."
   },
   E_UNKNOWN_SLOT: {
     severity: "error",
@@ -20889,6 +20907,17 @@ var diagnosticCodes = {
     fatal: false,
     fatality: "A warning never replaces a value (ADR 0013)."
   },
+  // Raised by a template the same way (TYTO-837): two colours it draws text in, chosen by a
+  // brief or a configuration (ADR 0226), are too close to read well. A warning: the person
+  // chose the colours, and the frame is drawn in them.
+  W_TEMPLATE_LOW_CONTRAST: {
+    severity: "warning",
+    summary: "Two colours an artwork draws text in have too little contrast to read well.",
+    template: "Artwork '{artwork}' in format '{format}': '{foreground}' on '{background}' has a contrast of {ratio}:1, too little for template '{template}' to read well; the colours are kept.",
+    spec: "docs/adr/0058-a-template-reports-warnings-beside-its-frame.md",
+    fatal: false,
+    fatality: "A warning never replaces a value (ADR 0013)."
+  },
   W_EXTERNAL_ART_MISSING: {
     severity: "warning",
     summary: "A slot whose art is painted outside Tyto has no file yet, and an outlined box stands in for it (ADR 0220).",
@@ -20909,7 +20938,7 @@ var diagnosticCodes = {
   },
   W_TEMPLATE_VALUE_INVALID: {
     severity: "warning",
-    summary: "A configuration sets a declared value to one of the wrong kind or outside its limits.",
+    summary: "A configuration or a brief's frontmatter sets a declared value to one of the wrong kind or outside its limits.",
     template: "Value '{name}' of template '{template}' {problem}; the template's default is used.",
     spec: "docs/adr/0153-a-template-declares-its-configurable-values-in-its-manifest.md",
     fatal: false,
@@ -22145,7 +22174,15 @@ function run(text2, options) {
     weight: options.weight ?? 400,
     style: options.style ?? "normal",
     color: paintOf(options.color),
-    ...options.decoration !== void 0 ? { decoration: options.decoration } : {}
+    ...options.decoration !== void 0 ? { decoration: options.decoration } : {},
+    ...options.box !== void 0 ? { box: boxOf(options.box) } : {}
+  };
+}
+function boxOf(box) {
+  return {
+    paint: typeof box.paint === "object" && "kind" in box.paint ? box.paint : { kind: "solid", color: color(box.paint) },
+    padding: { x: box.padding.x, over: box.padding.over, under: box.padding.under },
+    ...box.radius !== void 0 ? { radius: box.radius } : {}
   };
 }
 function lineBreak() {
@@ -22160,7 +22197,7 @@ function colorValue(context, name, fallback) {
   return typeof value === "string" ? value : fallback;
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.55.0/node_modules/@rafaelsilvalor/tyto-core/dist/template.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-core@0.60.0/node_modules/@rafaelsilvalor/tyto-core/dist/template.js
 function base(options) {
   return {
     transform: { ...identityTransform, ...options.transform },
@@ -22262,7 +22299,7 @@ function frame(options) {
   };
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.6.8/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-3KKHXN6D.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-3KKHXN6D.js
 var PAPER = "#fbfbfb";
 var INK = "#000000";
 var ZEBRA = "#f2f2f4";
@@ -22299,7 +22336,22 @@ var BODY = {
 };
 var OPTICAL_DROP = 0.15;
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.15.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.27.1/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
+function parameterValues(schema, given = {}) {
+  const values = {};
+  for (const [name, declared] of Object.entries(schema)) {
+    const value = given[name];
+    values[name] = valueWithin(declared, value);
+  }
+  return values;
+}
+function valueWithin(declared, value) {
+  if (declared.kind === "choice") {
+    return typeof value === "string" && declared.choices.includes(value) ? value : declared.default;
+  }
+  if (typeof value !== "number" || Number.isNaN(value)) return declared.default;
+  return Math.min(declared.max ?? Infinity, Math.max(declared.min ?? -Infinity, value));
+}
 function shifted(draft, dx, dy) {
   const transform2 = {
     ...draft.transform,
@@ -22324,6 +22376,32 @@ function block(width, height, draft) {
 }
 function at(x, y, item) {
   return shifted(item.draft, x, y);
+}
+function lines(text5) {
+  const result = [];
+  let current = [];
+  for (const inline of text5) {
+    if (inline.kind === "break") {
+      result.push(current);
+      current = [];
+      continue;
+    }
+    current.push(inline);
+  }
+  result.push(current);
+  return result.filter((line) => plain(line).trim() !== "");
+}
+function plain(text5) {
+  return text5.map((inline) => {
+    switch (inline.kind) {
+      case "text":
+        return inline.value;
+      case "break":
+        return "\n";
+      default:
+        return plain(inline.children);
+    }
+  }).join("");
 }
 var NO_BREAK_SPACE = "\xA0";
 var NUMBER = String.raw`\d[\d.,]*`;
@@ -22378,13 +22456,13 @@ var KEEP_TOGETHER_RULES = [
     after: String.raw`(?:${UNITS.join("|")})(?!\p{L})`
   }
 ];
-function keepTogetherText(text2, rules = KEEP_TOGETHER_RULES) {
+function keepTogetherText(text5, rules = KEEP_TOGETHER_RULES) {
   return rules.reduce(
-    (glued, rule) => glued.replace(
-      new RegExp(`(?<=${rule.before})( +)(?=${rule.after})`, "gu"),
+    (glued, rule2) => glued.replace(
+      new RegExp(`(?<=${rule2.before})( +)(?=${rule2.after})`, "gu"),
       (spaces) => NO_BREAK_SPACE.repeat(spaces.length)
     ),
-    text2
+    text5
   );
 }
 var LONGEST_LABEL = 40;
@@ -22420,20 +22498,74 @@ function labelOfText(line, options = {}) {
     text: line.slice(end)
   };
 }
-function mark(shape, height, fill2, name) {
-  const scale = height / shape.box.h;
-  return block(
-    shape.box.w * scale,
-    height,
-    vector({
-      name,
-      geometry: { kind: "path", d: shape.d, fillRule: shape.fillRule },
-      size: shape.box,
-      fill: solid(fill2),
-      transform: { scaleX: scale, scaleY: scale }
-    })
-  );
+function mark(shape2, height, fill2, name) {
+  const drawn = markIn(shape2, { width: Infinity, height }, fill2, {}, { name });
+  return { width: drawn.width, height: drawn.height, draft: drawn.draft };
 }
+var MARK_PARAMETERS = {
+  height: {
+    kind: "length",
+    default: 24,
+    min: 0,
+    description: "The mark's height, in px; absent, the area's height when it has one."
+  }
+};
+function markIn(shape2, area, fill2, given = {}, options = {}) {
+  const values = parameterValues(MARK_PARAMETERS, given);
+  const height = given.height !== void 0 || !Number.isFinite(area.height) ? values.height : area.height;
+  const scale = height / shape2.box.h;
+  const width = shape2.box.w * scale;
+  return {
+    ...block(
+      width,
+      height,
+      vector({
+        name: options.name ?? "mark",
+        geometry: { kind: "path", d: shape2.d, fillRule: shape2.fillRule },
+        size: shape2.box,
+        fill: solid(fill2),
+        transform: { scaleX: scale, scaleY: scale }
+      })
+    ),
+    overflow: Number.isFinite(area.width) ? Math.max(0, width - area.width) : 0
+  };
+}
+var TEXT_PARAMETERS = {
+  lineHeight: {
+    kind: "ratio",
+    default: 1.2,
+    min: 0,
+    description: "From one line to the next, as a multiple of the size."
+  },
+  letterSpacing: { kind: "length", default: 0, description: "Space added between letters, in px." },
+  align: {
+    kind: "choice",
+    default: "left",
+    choices: ["left", "center", "right", "justify"],
+    description: "Where each line sits across the box."
+  },
+  valign: {
+    kind: "choice",
+    default: "top",
+    choices: ["top", "middle", "bottom"],
+    description: "Where the lines sit down the box."
+  },
+  overflow: {
+    kind: "choice",
+    default: "clip",
+    choices: ["clip", "shrink", "grow"],
+    description: "What the text does when it does not fit its box."
+  }
+};
+var GROWN_TEXT_PARAMETERS = {
+  ...TEXT_PARAMETERS,
+  minHeight: {
+    kind: "length",
+    default: 0,
+    min: 0,
+    description: "The least height the block takes, in px, however few its lines."
+  }
+};
 function sealed(size, seal) {
   if (seal === void 0) return { size, seal: [] };
   const band = { w: size.w, h: seal.height };
@@ -22448,34 +22580,159 @@ function reportOverflow(report, bottom, limit) {
   const overflow = bottom - limit;
   if (overflow > 0) report({ code: "W_TEMPLATE_OVERFLOW", overflow });
 }
-function lines(text2) {
-  const result = [];
-  let current = [];
-  for (const inline of text2) {
-    if (inline.kind === "break") {
-      result.push(current);
-      current = [];
-      continue;
-    }
-    current.push(inline);
+var FIT_TEXT_PARAMETERS = {
+  floor: { kind: "length", default: 24, min: 1, description: "The smallest size, in px." },
+  ceiling: { kind: "length", default: 48, min: 1, description: "The largest size, in px." },
+  step: {
+    kind: "length",
+    default: 1,
+    min: 0,
+    description: "From one size tried to the next, in px. 0 is continuous: `oneLine` solves for the size that makes the line exactly as wide as the area."
+  },
+  start: {
+    kind: "choice",
+    default: "ceiling",
+    choices: ["ceiling", "whole"],
+    description: "The first size tried: the ceiling itself, or the whole pixel at or under it."
+  },
+  floorLast: {
+    kind: "choice",
+    default: "always",
+    choices: ["always", "on-step"],
+    description: "Whether the floor is tried last even when the step misses it, or only if hit."
+  },
+  lineHeight: {
+    kind: "ratio",
+    default: 1.2,
+    min: 0.5,
+    description: "From one line to the next, as a multiple of the size."
+  },
+  lineCap: {
+    kind: "length",
+    default: 0,
+    min: 0,
+    description: "The most lines a fitting size may take; 0 is no cap."
+  },
+  keepWrittenLines: {
+    kind: "choice",
+    default: "no",
+    choices: ["first", "no"],
+    description: "`first`: look for a size that keeps the lines as written before one that wraps them."
+  },
+  widthTolerance: {
+    kind: "length",
+    default: 0.5,
+    min: 0,
+    description: "Px a line may run past the area and still fit, for the rounding of a measure."
+  },
+  measureFrom: {
+    kind: "choice",
+    default: "box",
+    choices: ["box", "capitals"],
+    description: "How tall the text is against the area: its line boxes, or from its first capitals to its last baseline (ADR 0230)."
+  },
+  estimatedAdvance: {
+    kind: "ratio",
+    default: 0.55,
+    min: 0,
+    description: "A character's advance, in em, when nothing can measure the text."
+  },
+  align: {
+    kind: "choice",
+    default: "left",
+    choices: ["left", "center", "right"],
+    description: "Where each line sits across the area."
   }
-  result.push(current);
-  return result.filter((line) => plain(line).trim() !== "");
-}
-function plain(text2) {
-  return text2.map((inline) => {
-    switch (inline.kind) {
-      case "text":
-        return inline.value;
-      case "break":
-        return "\n";
-      default:
-        return plain(inline.children);
-    }
-  }).join("");
-}
+};
+var ORPHAN_LIMITS = { shrink: 0.08, tracking: 0.01 };
+var FITTED_COLUMN_PARAMETERS = {
+  floor: FIT_TEXT_PARAMETERS.floor,
+  ceiling: FIT_TEXT_PARAMETERS.ceiling,
+  step: FIT_TEXT_PARAMETERS.step,
+  start: FIT_TEXT_PARAMETERS.start,
+  floorLast: FIT_TEXT_PARAMETERS.floorLast,
+  gapFloor: {
+    kind: "length",
+    default: 24,
+    min: 0,
+    description: "The least a gap's unit may be, in px: a gap of weight w is at least w \xD7 this."
+  },
+  orphanShrink: {
+    kind: "ratio",
+    default: ORPHAN_LIMITS.shrink,
+    min: 0,
+    description: "How far under its fitted size the text may go to keep a word off a line alone."
+  },
+  orphanTracking: {
+    kind: "length",
+    default: ORPHAN_LIMITS.tracking,
+    min: 0,
+    description: "The most letter spacing, in em, a text may take or give for the same."
+  }
+};
+var PICTURE_SHAPE_PARAMETERS = {
+  widest: {
+    kind: "ratio",
+    default: 3,
+    min: 0,
+    description: "The widest shape the picture may take, as width over height."
+  },
+  tallest: {
+    kind: "ratio",
+    default: 1,
+    min: 0,
+    description: "The tallest shape the picture may take, as width over height; a taller file is fitted whole."
+  },
+  fallback: {
+    kind: "ratio",
+    default: 2,
+    min: 0,
+    description: "The picture's shape, as width over height, when the file's size is unknown."
+  },
+  fit: {
+    kind: "choice",
+    default: "auto",
+    choices: ["auto", "cover", "contain"],
+    description: "How the file fills the picture: `auto` covers it when the picture took the file\u2019s own shape and fits it whole otherwise."
+  }
+};
+var FRAMED_PICTURE_PARAMETERS = {
+  ...PICTURE_SHAPE_PARAMETERS,
+  border: {
+    kind: "length",
+    default: 4,
+    min: 0,
+    description: "The border on the top, the right and the foot, in px."
+  },
+  side: {
+    kind: "length",
+    default: 29,
+    min: 0,
+    description: "The bar down the left side, border included, in px."
+  },
+  radius: {
+    kind: "length",
+    default: 32,
+    min: 0,
+    description: "The inside's two left corners, where it meets the bar, in px."
+  },
+  shadowX: { kind: "length", default: 17, description: "The shadow's offset to the right, in px." },
+  shadowY: { kind: "length", default: 47, description: "The shadow's offset down, in px." },
+  shadowBlur: {
+    kind: "length",
+    default: 12,
+    min: 0,
+    description: "The shadow's blur, a standard deviation in px."
+  },
+  shadowSpread: {
+    kind: "length",
+    default: -20,
+    description: "How much wider than the frame the shadow is on every side; below 0, narrower."
+  }
+};
+var NO_FILL = solid({ r: 0, g: 0, b: 0, a: 0 });
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.6.8/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-EIGOHDOF.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-KTMH3XT2.js
 var PLACEHOLDER_LOGO = {
   box: { w: 186.09, h: 376.79 },
   d: (
@@ -22515,7 +22772,7 @@ function signatureOf(kit) {
   return kit.signature ?? PLACEHOLDER_SIGNATURE;
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.6.8/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
 var TITLE_INK = "#7c7c7c";
 var ROW_INK = "#393939";
 var FACE = systemFont("CircularXX");
