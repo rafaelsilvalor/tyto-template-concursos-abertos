@@ -52,6 +52,48 @@ Alfa`, `Inscrições: até 14/11`, `Vagas: 300`, `Remuneração: R$ 5.181,41`, `
 A marked slide (`{capa}`, `{contracapa}`) holds no text: the cover's words go in
 `abertura`/`chamada`, the back cover's in `fechamento`/`contatos`.
 
+## Flags
+
+| Flag         | On       | What it does                 |
+| ------------ | -------- | ---------------------------- |
+| `capa`       | `lamina` | The slide is the cover.      |
+| `contracapa` | `lamina` | The slide is the back cover. |
+
+A `::lamina` with neither is an exam. One slide takes one flag: written together,
+`{capa, contracapa}`, the slide is the cover. There is no other flag and no enum.
+
+## Highlights
+
+`**…**` is the highlight, for something out of the ordinary in the middle of a text. It works
+on an **exam slide only**; the cover and the back cover take none.
+
+| Value        | Default   | What takes it                                                                          |
+| ------------ | --------- | -------------------------------------------------------------------------------------- |
+| `destaque`   | `#00a0df` | `**…**` in the title, the subtitle and a fact's value (the label's colour by default). |
+| `destaque-2` | `#00a0df` | Only words marked `{cor:destaque-2}…{/}` in the title or the subtitle.                 |
+| `destaque-3` | `#00a0df` | Only words marked `{cor:destaque-3}…{/}` in the title or the subtitle.                 |
+
+- **In a fact's value**, `**…**` comes out in bold in `destaque`: `Vagas: **300** imediatas`.
+  The label keeps its own colour and weight, and so does a line with no label. A `{cor:…}`
+  mark changes nothing on the card.
+- **In the title and the subtitle**, `**…**` and `{cor:destaque}`, `{cor:destaque-2}` or
+  `{cor:destaque-3}` change the colour only: a heading is already in the heaviest weight. A
+  mark the template does not list (`{cor:azul}`) leaves its words as they are.
+
+Set a highlight's colour in the frontmatter; with none set, all three are the label's colour.
+
+```brief
+---
+template: concursos-abertos-saude
+formats: [grid]
+destaque-2: '#e30613'
+---
+::lamina
+  SEDUC QX {cor:destaque-2}2026{/}
+  Professor
+  Vagas: **300** imediatas
+```
+
 ## How to split into slides
 
 One exam per slide, always. With the cover and the back cover, **up to 18 exams** fit (the limit

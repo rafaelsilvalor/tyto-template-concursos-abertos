@@ -5098,7 +5098,7 @@ function isRecursive(inst, stack, resolve) {
     }
     return answer;
   };
-  const merge2 = (answer) => {
+  const merge3 = (answer) => {
     if (answer > result)
       result = answer;
   };
@@ -5107,7 +5107,7 @@ function isRecursive(inst, stack, resolve) {
   switch (kind) {
     case "object": {
       const raw = rawShape(def);
-      merge2(raw ? shape2(raw, true) : ASSUMED);
+      merge3(raw ? shape2(raw, true) : ASSUMED);
       check2(def.catchall);
       break;
     }
@@ -5157,7 +5157,7 @@ function isRecursive(inst, stack, resolve) {
     // `$ZodLazy` caches its inner on the def, so a resolved edge is followed exactly
     case "lazy": {
       const inner = def._cachedInner ?? (resolve ? inst._zod.innerType : void 0);
-      merge2(inner ? isRecursive(inner, stack, false) : ASSUMED);
+      merge3(inner ? isRecursive(inner, stack, false) : ASSUMED);
       break;
     }
     // a leaf by choice: `parts` are regex fragments, not data positions
@@ -21983,6 +21983,21 @@ function formatDiagnosticMessage(code, params) {
     return String(value);
   });
 }
+function sourceRange(start, end) {
+  if (!Number.isInteger(start) || !Number.isInteger(end)) {
+    throw new TypeError(`Range offsets must be integers, received (${start}, ${end}).`);
+  }
+  if (start < 0) {
+    throw new RangeError(`Range start must not be negative, received ${start}.`);
+  }
+  if (end < start) {
+    throw new RangeError(`Range end ${end} must not precede start ${start}.`);
+  }
+  return { start, end };
+}
+function unionRanges(a, b) {
+  return sourceRange(Math.min(a.start, b.start), Math.max(a.end, b.end));
+}
 function diagnostic(code, params, options = {}) {
   const base2 = {
     severity: diagnosticCodes[code].severity,
@@ -21994,6 +22009,29 @@ function diagnostic(code, params, options = {}) {
     ...options.range !== void 0 ? { range: options.range } : {},
     ...options.hint !== void 0 ? { hint: options.hint } : {}
   };
+}
+var origins = /* @__PURE__ */ new WeakMap();
+function rememberOrigin(run2, range) {
+  origins.set(run2, range);
+}
+function originOf(run2) {
+  return origins.get(run2);
+}
+function linearReading(math) {
+  const grouped = (items) => {
+    const reading = linearReading(items);
+    return [...reading].length === 1 ? reading : `(${reading})`;
+  };
+  return math.map((item) => {
+    switch (item.kind) {
+      case "text":
+        return item.text;
+      case "fraction":
+        return `${grouped(item.numerator)}/${grouped(item.denominator)}`;
+      case "scripts":
+        return (item.subscript === void 0 ? "" : `_${grouped(item.subscript)}`) + (item.superscript === void 0 ? "" : `^${grouped(item.superscript)}`);
+    }
+  }).join("");
 }
 var unitInterval = external_exports.number().min(0).max(1);
 var finite = external_exports.number().finite();
@@ -22187,6 +22225,99 @@ function boxOf(box) {
 }
 function lineBreak() {
   return { kind: "break" };
+}
+var BOLD = 700;
+var sameColor = (a, b) => a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
+var sameStops = (a, b) => a.length === b.length && a.every((stop2, index) => {
+  const other = b[index];
+  return other !== void 0 && stop2.offset === other.offset && sameColor(stop2.color, other.color);
+});
+function samePaint(a, b) {
+  if (a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case "solid":
+      return b.kind === "solid" && sameColor(a.color, b.color);
+    case "linear-gradient":
+      return b.kind === "linear-gradient" && a.angle === b.angle && sameStops(a.stops, b.stops);
+    case "radial-gradient":
+      return b.kind === "radial-gradient" && a.center.x === b.center.x && a.center.y === b.center.y && a.radius === b.radius && sameStops(a.stops, b.stops);
+    case "image":
+      return b.kind === "image" && a.fit === b.fit && a.asset.id === b.asset.id && a.asset.source === b.asset.source && a.asset.path === b.asset.path && a.asset.hash === b.asset.hash;
+  }
+}
+var sameFont = (a, b) => a.family === b.family && a.source === b.source && a.path === b.path;
+function sameBox(a, b) {
+  if (a === void 0 || b === void 0) return a === b;
+  return a.padding.x === b.padding.x && a.padding.over === b.padding.over && a.padding.under === b.padding.under && a.radius === b.radius && samePaint(a.paint, b.paint);
+}
+var sameStyle = (a, b) => a.size === b.size && a.weight === b.weight && a.style === b.style && a.decoration === b.decoration && sameFont(a.font, b.font) && samePaint(a.color, b.color) && sameBox(a.box, b.box);
+function absorbedByPrevious(target, produced, range) {
+  const previous = target[target.length - 1];
+  if (previous === void 0 || previous.kind !== "text") return false;
+  if (!sameStyle(previous, produced)) return false;
+  const merged = { ...previous, text: previous.text + produced.text };
+  const origin = originOf(previous);
+  rememberOrigin(merged, origin === void 0 ? range : unionRanges(origin, range));
+  target[target.length - 1] = merged;
+  return true;
+}
+function styled(inline, style2, options) {
+  switch (inline.kind) {
+    case "bold":
+      return typeof options.bold === "object" ? { ...style2, weight: BOLD, ...options.bold } : { ...style2, weight: options.bold ?? BOLD };
+    case "italic":
+      return { ...style2, ...options.italic, style: "italic" };
+    case "mark":
+      return { ...style2, ...options.mark?.(inline.key, inline.value) };
+    default:
+      return style2;
+  }
+}
+function breakOf(inline, spacing) {
+  return inline.paragraph === true && spacing !== void 0 && Number.isFinite(spacing) && spacing > 0 ? { kind: "break", space: spacing } : { kind: "break" };
+}
+function formulaOf(inline, style2) {
+  const { font: font2, size, weight, style: slant, color: color2 } = run(inline.source, style2);
+  const produced = {
+    kind: "formula",
+    text: linearReading(inline.math),
+    math: [...inline.math],
+    font: font2,
+    size,
+    weight,
+    style: slant,
+    color: color2
+  };
+  rememberOrigin(produced, inline.range);
+  return produced;
+}
+function append(target, text2, style2, options) {
+  for (const inline of text2) {
+    switch (inline.kind) {
+      case "text": {
+        if (inline.value === "") break;
+        const produced = run(inline.value, style2);
+        if (absorbedByPrevious(target, produced, inline.range)) break;
+        rememberOrigin(produced, inline.range);
+        target.push(produced);
+        break;
+      }
+      case "break":
+        target.push(breakOf(inline, options.paragraphSpacing));
+        break;
+      case "formula":
+        target.push(formulaOf(inline, style2));
+        break;
+      default:
+        append(target, inline.children, styled(inline, style2, options), options);
+        break;
+    }
+  }
+}
+function runsOf(text2, base2, options = {}) {
+  const runs = [];
+  append(runs, text2, base2, options);
+  return runs;
 }
 function numberValue(context, name, fallback) {
   const value = context.values?.[name];
@@ -22555,6 +22686,52 @@ function plainRuns(words, style2) {
   const [first = "", ...others] = words.split("\n");
   return [run(first, style2), ...others.flatMap((line) => [lineBreak(), run(line, style2)])];
 }
+var HIGHLIGHT_WEIGHT = 700;
+function mergeFamilies(base2, over) {
+  if (over === void 0) return base2;
+  const merged = { ...base2 };
+  for (const [key, family] of Object.entries(over)) {
+    const previous = merged[key];
+    const like = family.like ?? previous?.like;
+    merged[key] = {
+      ...like === void 0 ? {} : { like },
+      values: { ...previous?.values, ...family.values }
+    };
+  }
+  return merged;
+}
+function merge2(base2, over) {
+  const marks = mergeFamilies(base2.marks, over.marks);
+  return {
+    bold: { ...base2.bold, ...over.bold },
+    italic: { ...base2.italic, ...over.italic },
+    ...marks === void 0 ? {} : { marks }
+  };
+}
+function markStyle(spec, key, value) {
+  const family = spec.marks?.[key];
+  const named = family?.values[value];
+  if (family === void 0 || named === void 0) return void 0;
+  switch (family.like) {
+    case "bold":
+      return { weight: HIGHLIGHT_WEIGHT, ...spec.bold, ...named };
+    case "italic":
+      return { ...spec.italic, ...named, style: "italic" };
+    default:
+      return named;
+  }
+}
+function highlights(spec) {
+  return {
+    spec,
+    options: {
+      bold: { weight: HIGHLIGHT_WEIGHT, ...spec.bold },
+      italic: spec.italic ?? {},
+      mark: (key, value) => markStyle(spec, key, value)
+    },
+    with: (override) => highlights(merge2(spec, override))
+  };
+}
 function lines(text5) {
   const result = [];
   let current = [];
@@ -22882,6 +23059,10 @@ function markIn(shape2, area, fill2, given = {}, options = {}) {
     overflow: Number.isFinite(area.width) ? Math.max(0, width - area.width) : 0
   };
 }
+function atLeastOne(runs) {
+  const [first, ...rest] = runs;
+  return first === void 0 ? void 0 : [first, ...rest];
+}
 var TEXT_PARAMETERS = {
   lineHeight: {
     kind: "ratio",
@@ -23022,6 +23203,25 @@ var FITTED_COLUMN_PARAMETERS = {
     description: "The most letter spacing, in em, a text may take or give for the same."
   }
 };
+function roleOf(context, spec) {
+  const marked = (adjustments) => spec.roles.filter((role) => adjustments[role] === true);
+  const own2 = marked(context.adjustments);
+  const [first] = own2;
+  if (first !== void 0) return { role: first, ...own2.length > 1 ? { conflict: own2 } : {} };
+  const continuation = spec.continuation;
+  if (continuation === void 0 || context.adjustments[continuation.flag] !== true) {
+    return { role: spec.default };
+  }
+  const before = context.artworks?.slice(0, context.artwork.index).reverse() ?? [];
+  for (const { adjustments } of before) {
+    const [role] = marked(adjustments);
+    if (role !== void 0) {
+      return { role: continuation.carries.includes(role) ? role : spec.default };
+    }
+    if (adjustments[continuation.flag] !== true) return { role: spec.default };
+  }
+  return { role: spec.default };
+}
 var HUGGED_TEXT_PARAMETERS = {
   size: {
     kind: "length",
@@ -23440,7 +23640,7 @@ var TITLE_INK = "#7c7c7c";
 var ROW_INK = "#393939";
 var FACE = systemFont("CircularXX");
 var BOOK = 400;
-var BOLD = 700;
+var BOLD2 = 700;
 var TYPE = {
   title: 81,
   day: 55,
@@ -23468,7 +23668,7 @@ var style = (size, weight, color2) => ({
   color: color2
 });
 var EXAM_STYLE = style(TYPE.exam, BOOK, ROW_INK);
-var TITLE_STYLE = style(TYPE.title, BOLD, TITLE_INK);
+var TITLE_STYLE = style(TYPE.title, BOLD2, TITLE_INK);
 var TITLE_LINE = Math.round(TYPE.title * TITLE2.lineHeight);
 var SEAL_HEIGHT = 140;
 function sealOf(context) {
@@ -23506,7 +23706,20 @@ var COLOR_DEFAULTS = {
   "title-ink": "#11588b",
   "subtitle-ink": "#4d4d4d",
   "label-ink": "#00578e",
-  "value-ink": "#646464"
+  "value-ink": "#646464",
+  /**
+   * The highlights, named in the brief writer's language because a brief's frontmatter sets them
+   * (Tyto ADR 0226): `destaque: '#e30613'`. `**…**` takes `destaque`, in an exam's title, its
+   * subtitle and its card's values. Its default is the label's colour.
+   */
+  destaque: "#00578e",
+  /**
+   * A second and a third highlight, reached only by a colour mark in the title or the subtitle,
+   * `{cor:destaque-2}…{/}`. A declared colour needs a constant default, so theirs is `destaque`'s,
+   * and a brief that marks them sets them.
+   */
+  "destaque-2": "#00578e",
+  "destaque-3": "#00578e"
 };
 var SAUDE_COLOR_DEFAULTS = {
   deep: "#00eff6",
@@ -23517,7 +23730,10 @@ var SAUDE_COLOR_DEFAULTS = {
   "title-ink": "#1e9fdc",
   "subtitle-ink": "#4d4d4d",
   "label-ink": "#00a0df",
-  "value-ink": "#646464"
+  "value-ink": "#646464",
+  destaque: "#00a0df",
+  "destaque-2": "#00a0df",
+  "destaque-3": "#00a0df"
 };
 var NUMBER_DEFAULTS = {
   /** An exam's title breaks between words into lines of at most this many characters. */
@@ -23534,7 +23750,7 @@ var FACE2 = { family: "CircularXX", source: "system" };
 var LIGHT = 300;
 var REGULAR = 400;
 var MEDIUM = 500;
-var BOLD2 = 700;
+var BOLD3 = 700;
 var BLACK = 900;
 var CAP_HEIGHT = 0.709;
 var SLIDE_WIDTH = 1080;
@@ -23546,7 +23762,7 @@ function buildIn(defaults, context) {
   const ink = (name) => colorValue(context, name, defaults[name]);
   const page = sealed(context.size, sealOf(context));
   const area = { width: page.size.w, height: page.size.h };
-  const role = roleOf(context);
+  const { role } = roleOf(context, ROLES);
   const dark = role !== "lamina";
   const body = role === "capa" ? cover(context, ink) : role === "contracapa" ? backCover(context, ink) : exam(context, ink, area.height - FOOTER.arrowFromFoot - FOOTER.arrow.h);
   return frame({
@@ -23566,11 +23782,7 @@ function buildIn(defaults, context) {
     ]
   });
 }
-function roleOf(context) {
-  if (context.adjustments["capa"] === true) return "capa";
-  if (context.adjustments["contracapa"] === true) return "contracapa";
-  return "lamina";
-}
+var ROLES = { roles: ["capa", "contracapa"], default: "lamina" };
 function cover(context, ink) {
   const [first = "", second = ""] = slotText(context, "abertura", DEFAULT_OPENING).split("\n");
   return [
@@ -23582,21 +23794,21 @@ function cover(context, ink) {
       x: 84,
       capTop: 508,
       size: 140.9,
-      weight: BOLD2,
+      weight: BOLD3,
       color: ink("accent")
     }),
     capitalsAt("abertura-2", second, {
       x: 79,
       capTop: 695,
       size: 137.2,
-      weight: BOLD2,
+      weight: BOLD3,
       color: ink("accent")
     }),
     capitalsAt("chamada", slotText(context, "chamada", DEFAULT_CALL), {
       x: 729,
       capTop: 686,
       size: 33.1,
-      weight: BOLD2,
+      weight: BOLD3,
       color: ink("accent"),
       lineHeight: 1.24
     }),
@@ -23619,7 +23831,7 @@ function backCover(context, ink) {
       x: 190,
       capTop: 395,
       size: 43.6,
-      weight: BOLD2,
+      weight: BOLD3,
       color: ink("accent"),
       lineHeight: 1.19,
       width: 700,
@@ -23668,41 +23880,53 @@ var LINK = {
   ...CUT_OUT
 };
 function exam(context, ink, footerTop) {
-  const written = slideRichLines(context).map((line) => plain(line).trim());
-  const [title = "", ...rest] = written;
-  const subtitle = rest[0] !== void 0 && labelOfText(rest[0]).label === void 0 ? rest.shift() : void 0;
+  const written = slideRichLines(context).map((line) => ({
+    marked: line,
+    words: plain(line).trim()
+  }));
+  const [title, ...rest] = written;
+  const subtitle = rest[0] !== void 0 && labelOfText(rest[0].words).label === void 0 ? rest.shift() : void 0;
   const titleLines = wrapAt(
-    keepTogetherText(title).toUpperCase(),
+    keepTogetherText(title?.words ?? "").toUpperCase(),
     numberValue(context, "title-line-max", NUMBER_DEFAULTS["title-line-max"])
   );
-  const block2 = examBlock(context, ink, titleLines, subtitle, rest);
+  const block2 = examBlock(
+    context,
+    ink,
+    { marked: title?.marked ?? [], words: titleLines.join("\n") },
+    subtitle && { marked: subtitle.marked, words: subtitle.words.toUpperCase() },
+    rest
+  );
   const middle = (EXAM.logoFoot + footerTop) / 2;
   const titleTop = Math.max(EXAM.highestTitleTop, Math.round(middle - block2.height / 2));
   if (block2.card) reportOverflow(context.report, titleTop + block2.height, footerTop);
   return [at(0, titleTop - anchorOf(block2.column).capTop, block2.column)];
 }
-function examBlock(context, ink, titleLines, subtitle, facts) {
+function examBlock(context, ink, title, subtitle, facts) {
   const slide = { width: SLIDE_WIDTH, height: Infinity };
-  const heading = (name, words, size, color2) => capText(
-    plainRuns(words, { font: FACE2, size, weight: BLACK, color: color2 }),
-    slide,
-    { size, align: "center" },
-    // Never cut at the box: an accented capital on the first line rises above the line's box.
-    { name, text: { overflow: "grow" } }
-  );
-  const laid = card(context, ink, facts);
+  const marks = highlightsOf(ink);
+  const heading = (name, line, size, color2) => {
+    const style2 = { font: FACE2, size, weight: BLACK, color: color2 };
+    const capitals = runsOf(line.marked, style2, marks.header.options).map(
+      (part) => part.kind === "text" ? { ...part, text: part.text.toUpperCase() } : part
+    );
+    const drawn = plainRuns(line.words, style2);
+    return capText(
+      atLeastOne(paintedLike(drawn, capitals)) ?? drawn,
+      slide,
+      { size, align: "center" },
+      // Never cut at the box: an accented capital on the first line rises above the line's box.
+      { name, text: { overflow: "grow" } }
+    );
+  };
+  const laid = card(context, ink, facts, marks.facts);
   const column = stackIn(
     slide,
     [
-      heading("titulo", titleLines.join("\n"), EXAM.titleSize, ink("title-ink")),
+      heading("titulo", title, EXAM.titleSize, ink("title-ink")),
       ...subtitle === void 0 ? [] : [
         {
-          item: heading(
-            "subtitulo",
-            subtitle.toUpperCase(),
-            EXAM.subtitleSize,
-            ink("subtitle-ink")
-          ),
+          item: heading("subtitulo", subtitle, EXAM.subtitleSize, ink("subtitle-ink")),
           gapAbove: EXAM.subtitleGap
         }
       ],
@@ -23739,17 +23963,25 @@ var EXAM = {
   /** A glyph's advance, in em, for when nothing can be measured (a test, CI without the face). */
   estimatedAdvance: 0.55
 };
-function card(context, ink, facts) {
+function card(context, ink, facts, marks) {
   const fact = { font: FACE2, size: EXAM.factSize };
-  const [first, ...others] = labelValueRuns(
-    facts,
-    {
-      label: { ...fact, weight: MEDIUM, color: ink("label-ink") },
-      value: { ...fact, weight: LIGHT, color: ink("value-ink") }
-    },
-    { unlabelled: "label", labelGap: "as-written", keepTogether: "yes" },
-    { value: glueConnectors }
-  );
+  const styles = {
+    label: { ...fact, weight: MEDIUM, color: ink("label-ink") },
+    value: { ...fact, weight: LIGHT, color: ink("value-ink") }
+  };
+  const [first, ...others] = facts.flatMap((line, index) => {
+    const drawn = labelValueRuns(
+      [line.words],
+      styles,
+      { unlabelled: "label", labelGap: "as-written", keepTogether: "yes" },
+      { value: glueConnectors }
+    );
+    const VALUE = 1;
+    return [
+      ...index > 0 ? [lineBreak()] : [],
+      ...drawn[VALUE] === void 0 ? drawn : paintedLike(drawn, runsOf(line.marked, styles.value, marks.options), VALUE)
+    ];
+  });
   if (first === void 0) return void 0;
   const padding = numberValue(context, "card-padding", NUMBER_DEFAULTS["card-padding"]);
   const widest = numberValue(context, "card-max-width", NUMBER_DEFAULTS["card-max-width"]) - padding * 2;
@@ -23886,6 +24118,46 @@ function score(lines2) {
     longest,
     ragged: lines2.reduce((sum, line) => sum + (longest - line.length) ** 2, 0)
   };
+}
+var COLOR_MARK = "cor";
+var HIGHLIGHT_NAMES = ["destaque", "destaque-2", "destaque-3"];
+function highlightsOf(ink) {
+  const facts = highlights({ bold: { color: ink("destaque") } });
+  const values = Object.fromEntries(HIGHLIGHT_NAMES.map((name) => [name, { color: ink(name) }]));
+  return {
+    facts,
+    header: facts.with({
+      bold: { weight: BLACK },
+      marks: { [COLOR_MARK]: { like: "plain", values } }
+    })
+  };
+}
+var isBlank = (glyph) => glyph !== void 0 && /\s/.test(glyph);
+var sameLook = (one, other) => one.weight === other.weight && JSON.stringify(one.color) === JSON.stringify(other.color);
+function paintedLike(drawn, written, from = 0) {
+  const source = written.flatMap(
+    (span) => span.kind === "text" ? [...span.text].map((glyph) => ({ glyph, span })) : []
+  );
+  let next = 0;
+  return drawn.flatMap((given, index) => {
+    if (given.kind !== "text") return [given];
+    const pieces = [];
+    for (const glyph of given.text) {
+      const blank = isBlank(glyph);
+      if (!blank) while (isBlank(source[next]?.glyph)) next += 1;
+      const found = source[next];
+      const same = found !== void 0 && (blank ? isBlank(found.glyph) : found.glyph === glyph);
+      if (same) next += 1;
+      const last = pieces[pieces.length - 1];
+      const like = same ? found.span : last?.like ?? given;
+      if (last !== void 0 && sameLook(last.like, like)) last.text += glyph;
+      else pieces.push({ text: glyph, like });
+    }
+    if (index < from) return [given];
+    return pieces.map(
+      ({ text: text2, like }) => sameLook(like, given) ? { ...given, text: text2 } : { ...given, text: text2, color: like.color, weight: like.weight }
+    );
+  });
 }
 var ARROW_HEAD_RATIO = 0.62;
 function arrow(size, color2) {

@@ -20,17 +20,28 @@
  * (Tyto ADR 0153) whose default is the reference's.
  */
 
-import { colorValue, numberValue, frame, linearGradient, solid, stop } from '@tyto/core/template';
+import {
+  colorValue,
+  numberValue,
+  frame,
+  lineBreak,
+  linearGradient,
+  runsOf,
+  solid,
+  stop,
+} from '@tyto/core/template';
 import { drawLogo, oneInk, sealOf, signatureOf } from '@tyto/house-style';
 import {
   anchorOf,
   arrowShape,
   at,
+  atLeastOne,
   capsulePath,
   carouselFooter,
   capText,
   circlePath,
   cornerBracket,
+  highlights,
   huggedText,
   icon,
   inset,
@@ -42,6 +53,7 @@ import {
   plain,
   plainRuns,
   reportOverflow,
+  roleOf,
   roundedRectPath,
   rule,
   sealed,
@@ -52,9 +64,9 @@ import {
   stackIn,
 } from '@tyto/template-kit';
 
-import type { TemplateBuild, TemplateContext } from '@tyto/core';
+import type { RichText, TemplateBuild, TemplateContext, TextRun, TextSpan } from '@tyto/core';
 import type { NodeDraft } from '@tyto/core/template';
-import type { Area, Block, Icon } from '@tyto/template-kit';
+import type { Area, Block, Highlights, Icon } from '@tyto/template-kit';
 
 /* ------------------------------------------------------------------------- the words -- */
 
@@ -84,6 +96,19 @@ export const COLOR_DEFAULTS = {
   'subtitle-ink': '#4d4d4d',
   'label-ink': '#00578e',
   'value-ink': '#646464',
+  /**
+   * The highlights, named in the brief writer's language because a brief's frontmatter sets them
+   * (Tyto ADR 0226): `destaque: '#e30613'`. `**…**` takes `destaque`, in an exam's title, its
+   * subtitle and its card's values. Its default is the label's colour.
+   */
+  destaque: '#00578e',
+  /**
+   * A second and a third highlight, reached only by a colour mark in the title or the subtitle,
+   * `{cor:destaque-2}…{/}`. A declared colour needs a constant default, so theirs is `destaque`'s,
+   * and a brief that marks them sets them.
+   */
+  'destaque-2': '#00578e',
+  'destaque-3': '#00578e',
 } as const;
 
 type ColorName = keyof typeof COLOR_DEFAULTS;
@@ -104,6 +129,9 @@ export const SAUDE_COLOR_DEFAULTS: Readonly<Record<ColorName, string>> = {
   'subtitle-ink': '#4d4d4d',
   'label-ink': '#00a0df',
   'value-ink': '#646464',
+  destaque: '#00a0df',
+  'destaque-2': '#00a0df',
+  'destaque-3': '#00a0df',
 };
 
 /** The numbers a configuration may change, by declared value name, each default the reference's. */
@@ -154,7 +182,7 @@ function buildIn(defaults: Readonly<Record<ColorName, string>>, context: Templat
   const page = sealed(context.size, sealOf(context));
   const area = { width: page.size.w, height: page.size.h };
 
-  const role = roleOf(context);
+  const { role } = roleOf(context, ROLES);
   const dark = role !== 'lamina';
   const body =
     role === 'capa'
@@ -185,12 +213,11 @@ function buildIn(defaults: Readonly<Record<ColorName, string>>, context: Templat
 
 type Ink = (name: ColorName) => string;
 
-/** Which of the three slides this `::lamina` is: the brief marks the cover and the back cover. */
-export function roleOf(context: TemplateContext): 'capa' | 'contracapa' | 'lamina' {
-  if (context.adjustments['capa'] === true) return 'capa';
-  if (context.adjustments['contracapa'] === true) return 'contracapa';
-  return 'lamina';
-}
+/**
+ * Which of the three slides a `::lamina` is, read by the kit (TYTO-552): the brief marks the cover
+ * and the back cover, an unmarked slide is an exam, and a slide marked both is the cover.
+ */
+const ROLES = { roles: ['capa', 'contracapa'], default: 'lamina' } as const;
 
 /* -------------------------------------------------------------------------- the cover -- */
 
@@ -349,15 +376,26 @@ const LINK: ContactMark = {
  * signature, is reported as `W_TEMPLATE_OVERFLOW` on its `::lamina` (Tyto ADR 0058).
  */
 function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[] {
-  const written = slideRichLines(context).map((line) => plain(line).trim());
-  const [title = '', ...rest] = written;
+  const written: Written[] = slideRichLines(context).map((line) => ({
+    marked: line,
+    words: plain(line).trim(),
+  }));
+  const [title, ...rest] = written;
   const subtitle =
-    rest[0] !== undefined && labelOfText(rest[0]).label === undefined ? rest.shift() : undefined;
+    rest[0] !== undefined && labelOfText(rest[0].words).label === undefined
+      ? rest.shift()
+      : undefined;
   const titleLines = wrapAt(
-    keepTogetherText(title).toUpperCase(),
+    keepTogetherText(title?.words ?? '').toUpperCase(),
     numberValue(context, 'title-line-max', NUMBER_DEFAULTS['title-line-max']),
   );
-  const block = examBlock(context, ink, titleLines, subtitle, rest);
+  const block = examBlock(
+    context,
+    ink,
+    { marked: title?.marked ?? [], words: titleLines.join('\n') },
+    subtitle && { marked: subtitle.marked, words: subtitle.words.toUpperCase() },
+    rest,
+  );
 
   // Measured before it is placed: its height does not depend on where it starts.
   const middle = (EXAM.logoFoot + footerTop) / 2;
@@ -374,34 +412,38 @@ function exam(context: TemplateContext, ink: Ink, footerTop: number): NodeDraft[
 function examBlock(
   context: TemplateContext,
   ink: Ink,
-  titleLines: readonly string[],
-  subtitle: string | undefined,
-  facts: readonly string[],
+  title: Written,
+  subtitle: Written | undefined,
+  facts: readonly Written[],
 ): { readonly column: Block; readonly height: number; readonly card: boolean } {
   const slide = { width: SLIDE_WIDTH, height: Infinity };
-  const heading = (name: string, words: string, size: number, color: string): Block =>
-    capText(
-      plainRuns(words, { font: FACE, size, weight: BLACK, color }),
+  const marks = highlightsOf(ink);
+  // A heading is drawn in capitals, in the lines the template broke it into; its highlights are
+  // read from what the brief wrote and laid over those lines glyph by glyph.
+  const heading = (name: string, line: Written, size: number, color: string): Block => {
+    const style = { font: FACE, size, weight: BLACK, color };
+    const capitals = runsOf(line.marked, style, marks.header.options).map((part) =>
+      part.kind === 'text' ? { ...part, text: part.text.toUpperCase() } : part,
+    );
+    const drawn = plainRuns(line.words, style);
+    return capText(
+      atLeastOne(paintedLike(drawn, capitals)) ?? drawn,
       slide,
       { size, align: 'center' },
       // Never cut at the box: an accented capital on the first line rises above the line's box.
       { name, text: { overflow: 'grow' } },
     );
-  const laid = card(context, ink, facts);
+  };
+  const laid = card(context, ink, facts, marks.facts);
   const column = stackIn(
     slide,
     [
-      heading('titulo', titleLines.join('\n'), EXAM.titleSize, ink('title-ink')),
+      heading('titulo', title, EXAM.titleSize, ink('title-ink')),
       ...(subtitle === undefined
         ? []
         : [
             {
-              item: heading(
-                'subtitulo',
-                subtitle.toUpperCase(),
-                EXAM.subtitleSize,
-                ink('subtitle-ink'),
-              ),
+              item: heading('subtitulo', subtitle, EXAM.subtitleSize, ink('subtitle-ink')),
               gapAbove: EXAM.subtitleGap,
             },
           ]),
@@ -449,21 +491,33 @@ const EXAM = {
 function card(
   context: TemplateContext,
   ink: Ink,
-  facts: readonly string[],
+  facts: readonly Written[],
+  marks: Highlights,
 ): { readonly block: Block; readonly padding: number } | undefined {
   const fact = { font: FACE, size: EXAM.factSize } as const;
+  const styles = {
+    label: { ...fact, weight: MEDIUM, color: ink('label-ink') },
+    value: { ...fact, weight: LIGHT, color: ink('value-ink') },
+  };
   // The kit glues a currency sign to its amount (TYTO-593) and finds the label at the first
   // colon (TYTO-594); a line without a label is drawn whole in the label's ink. The glue between
-  // a connector and the word after it is this template's own vocabulary, handed in.
-  const [first, ...others] = labelValueRuns(
-    facts,
-    {
-      label: { ...fact, weight: MEDIUM, color: ink('label-ink') },
-      value: { ...fact, weight: LIGHT, color: ink('value-ink') },
-    },
-    { unlabelled: 'label', labelGap: 'as-written', keepTogether: 'yes' },
-    { value: glueConnectors },
-  );
+  // a connector and the word after it is this template's own vocabulary, handed in. A value
+  // then takes the highlights its line wrote; a label, and a line with no label, keep their ink.
+  const [first, ...others] = facts.flatMap((line, index) => {
+    const drawn = labelValueRuns(
+      [line.words],
+      styles,
+      { unlabelled: 'label', labelGap: 'as-written', keepTogether: 'yes' },
+      { value: glueConnectors },
+    );
+    const VALUE = 1;
+    return [
+      ...(index > 0 ? [lineBreak()] : []),
+      ...(drawn[VALUE] === undefined
+        ? drawn
+        : paintedLike(drawn, runsOf(line.marked, styles.value, marks.options), VALUE)),
+    ];
+  });
   if (first === undefined) return undefined;
 
   const padding = numberValue(context, 'card-padding', NUMBER_DEFAULTS['card-padding']);
@@ -661,6 +715,80 @@ function score(lines: readonly string[]): { longest: number; ragged: number } {
     longest,
     ragged: lines.reduce((sum, line) => sum + (longest - line.length) ** 2, 0),
   };
+}
+
+/* -------------------------------------------------------------------- the highlights -- */
+
+/** A line of an exam: what the brief wrote, marks and all, and the words the template draws. */
+interface Written {
+  readonly marked: RichText;
+  readonly words: string;
+}
+
+/** The mark family that paints a span of an exam's title or subtitle: `{cor:destaque-2}…{/}`. */
+const COLOR_MARK = 'cor';
+/** The colours a `{cor:…}` mark may name: the highlights a brief can set in its frontmatter. */
+const HIGHLIGHT_NAMES = ['destaque', 'destaque-2', 'destaque-3'] as const;
+
+/**
+ * What the brief's highlights look like on an exam slide, read by the kit (TYTO-554). In the
+ * card's values `**…**` is Bold in `destaque`. In the title and the subtitle `**…**` paints
+ * `destaque` and `{cor:destaque|destaque-2|destaque-3}` its colour, and both keep the heading's
+ * weight, which is already the face's heaviest. A name the template does not declare leaves the
+ * words as they are. The cover and the back cover take no highlight.
+ */
+function highlightsOf(ink: Ink): { readonly facts: Highlights; readonly header: Highlights } {
+  const facts = highlights({ bold: { color: ink('destaque') } });
+  const values = Object.fromEntries(HIGHLIGHT_NAMES.map((name) => [name, { color: ink(name) }]));
+  return {
+    facts,
+    header: facts.with({
+      bold: { weight: BLACK },
+      marks: { [COLOR_MARK]: { like: 'plain', values } },
+    }),
+  };
+}
+
+const isBlank = (glyph: string | undefined): boolean => glyph !== undefined && /\s/.test(glyph);
+
+const sameLook = (one: TextSpan, other: TextSpan): boolean =>
+  one.weight === other.weight && JSON.stringify(one.color) === JSON.stringify(other.color);
+
+/**
+ * `drawn` in the colour and the weight `written` gives each glyph. The two hold the same glyphs
+ * in the same order and differ only in their blanks: the template broke a title into lines and
+ * glued a fact's words with no-break spaces after the brief's marks were read, so a highlight is
+ * found again by walking both, glyph by glyph. A drawn run before `from` is walked and left whole
+ * (a fact's label), and so is any glyph `written` does not have at that place.
+ *
+ * Pending a kit piece (TYTO-906): a wrap that takes runs would keep each word's look itself.
+ */
+function paintedLike(drawn: readonly TextRun[], written: readonly TextRun[], from = 0): TextRun[] {
+  const source = written.flatMap((span) =>
+    span.kind === 'text' ? [...span.text].map((glyph) => ({ glyph, span })) : [],
+  );
+  let next = 0;
+  return drawn.flatMap((given, index): TextRun[] => {
+    if (given.kind !== 'text') return [given];
+    const pieces: { text: string; like: TextSpan }[] = [];
+    for (const glyph of given.text) {
+      const blank = isBlank(glyph);
+      if (!blank) while (isBlank(source[next]?.glyph)) next += 1;
+      const found = source[next];
+      const same = found !== undefined && (blank ? isBlank(found.glyph) : found.glyph === glyph);
+      if (same) next += 1;
+      const last = pieces[pieces.length - 1];
+      const like = same ? found.span : (last?.like ?? given);
+      if (last !== undefined && sameLook(last.like, like)) last.text += glyph;
+      else pieces.push({ text: glyph, like });
+    }
+    if (index < from) return [given];
+    return pieces.map(({ text, like }) =>
+      sameLook(like, given)
+        ? { ...given, text }
+        : { ...given, text, color: like.color, weight: like.weight },
+    );
+  });
 }
 
 /* ------------------------------------------------------------------------ the shared -- */
